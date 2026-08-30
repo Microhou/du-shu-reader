@@ -56,9 +56,10 @@ test('EPUB payload：图片二进制经 base64 往返无损', () => {
     },
   };
   const backup = buildBackupBook(meta(), payload, []);
+  const json = JSON.stringify(backup);
   // 备份形态里图片必须是 base64 字符串（回归：Uint8Array 直接序列化会丢成 {}）
   const images = (
-    JSON.parse(JSON.stringify(backup)) as {
+    JSON.parse(json) as {
       payload: { book: { images: Record<string, unknown> } };
     }
   ).payload.book.images;
