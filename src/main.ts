@@ -11,6 +11,12 @@ if (started) {
   app.quit();
 }
 
+// 单实例锁：两个实例共用同一份 IndexedDB 时，后启动的会因 LevelDB 锁挂死，
+// 因此第二个实例直接退出并唤起已有窗口。
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+}
+
 const createWindow = () => {
   const win = new BrowserWindow({
     width: 1150,
@@ -39,6 +45,14 @@ const createWindow = () => {
     );
   }
 };
+
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
 
 app.whenReady().then(() => {
   ipcMain.handle('open-text-files', async () => {

@@ -618,19 +618,23 @@ button {
   position: absolute;
   top: 52px;
   bottom: 0;
-  width: 33%;
   border: none;
   background: transparent;
   cursor: pointer;
   z-index: 5;
 }
 
+/* 翻页区只占正文栏两侧的空白，不能覆盖文字——否则行首/行尾的文字
+   无法被鼠标选中划线（此前 33% 宽的透明区域恰好压住每行前后约 4 个字）。
+   380px = PDF 栏（760px）的半宽，对更窄的 TXT/EPUB 栏同样留足余量。 */
 .zone-left {
   left: 0;
+  right: calc(50% + 380px);
 }
 
 .zone-right {
   right: 0;
+  left: calc(50% + 380px);
 }
 
 /* 可见的翻页按钮：三种格式通用 */
