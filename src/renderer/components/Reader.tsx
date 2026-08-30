@@ -25,7 +25,7 @@ import AnnotationDrawer from './AnnotationDrawer.tsx';
 import PdfReader from './PdfReader.tsx';
 import TextReader from './TextReader.tsx';
 import TocDrawer, { type TocEntry } from './TocDrawer.tsx';
-import { useSettings, themeLabel } from '../hooks/useSettings.ts';
+import { useSettings, themeLabel } from '../settings.tsx';
 import { library } from '../library.ts';
 import { mirrorProgress, readInitialRatio } from '../progress.ts';
 import { addDailySeconds, getTodaySeconds } from '../stats-store.ts';

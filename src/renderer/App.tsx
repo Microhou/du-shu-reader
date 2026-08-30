@@ -10,7 +10,6 @@ import type {
 import Bookshelf from './components/Bookshelf.tsx';
 import Reader from './components/Reader.tsx';
 import { library } from './library.ts';
-import { useSettings } from './hooks/useSettings.ts';
 
 type View = { name: 'shelf' } | { name: 'reader'; bookId: string };
 
@@ -30,8 +29,6 @@ export default function App() {
   const [view, setView] = useState<View>({ name: 'shelf' });
   const [books, setBooks] = useState<BookMeta[]>([]);
   const [loaded, setLoaded] = useState(false);
-  // 主题在书架也要生效：挂载时把持久化主题写到根元素
-  useSettings();
 
   const refresh = useCallback(async () => {
     setBooks(await library.listBooks());
