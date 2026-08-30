@@ -4,3 +4,4 @@ out/
 /gbk-novel-test.txt
 Thumbs.db
 .DS_Store
+.zcode/
