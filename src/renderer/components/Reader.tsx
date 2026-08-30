@@ -387,52 +387,12 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
         <button className="reader-tool" onClick={() => void handleBack()}>
           ← 书架
         </button>
-        {!isPdf && (
-          <button
-            className="reader-tool"
-            onClick={() => setDrawer(drawer === 'toc' ? null : 'toc')}
-          >
-            目录
-          </button>
-        )}
-        <button
-          className="reader-tool"
-          onClick={() => setDrawer(drawer === 'annotations' ? null : 'annotations')}
-        >
-          标注
-        </button>
         <div className="reader-title" title={meta.title}>
           {meta.title}
         </div>
         <span className="reader-pageinfo">
           {pageInfo.page} / {pageInfo.pages} 页
         </span>
-        <button
-          className="reader-tool"
-          title="切换主题（纸张 → 护眼 → 深色）"
-          onClick={cycleTheme}
-        >
-          {themeLabel(theme)}
-        </button>
-        {!isPdf && (
-          <>
-            <button
-              className="reader-tool"
-              title="减小字号"
-              onClick={() => changeFontSize(-2)}
-            >
-              A−
-            </button>
-            <span className="reader-fontsize">{fontSize}</span>
-            <button
-              className="reader-tool"
-              title="增大字号"
-              onClick={() => changeFontSize(2)}
-            >
-              A＋
-            </button>
-          </>
-        )}
       </header>
 
       <div className="reader-scroll" ref={scrollRef} onScroll={handleScroll}>
@@ -500,6 +460,51 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
         title="下一页"
         onClick={() => turnPage(1)}
       />
+
+      {/* 右侧悬浮工具栏（参考微信读书阅读页） */}
+      <div className="reader-rail">
+        {!isPdf && (
+          <button
+            className="rail-btn"
+            title="目录"
+            onClick={() => setDrawer(drawer === 'toc' ? null : 'toc')}
+          >
+            ☰
+          </button>
+        )}
+        <button
+          className="rail-btn"
+          title="标注（书签 / 划线 / 笔记）"
+          onClick={() => setDrawer(drawer === 'annotations' ? null : 'annotations')}
+        >
+          ✎
+        </button>
+        {!isPdf && (
+          <>
+            <button
+              className="rail-btn rail-btn-lg"
+              title="增大字号"
+              onClick={() => changeFontSize(2)}
+            >
+              A⁺
+            </button>
+            <button
+              className="rail-btn rail-btn-lg"
+              title="减小字号"
+              onClick={() => changeFontSize(-2)}
+            >
+              A⁻
+            </button>
+          </>
+        )}
+        <button
+          className="rail-btn"
+          title={`当前主题：${themeLabel(theme)}，点击切换（纸 → 绿 → 夜）`}
+          onClick={cycleTheme}
+        >
+          {themeLabel(theme)}
+        </button>
+      </div>
 
       <TocDrawer
         open={drawer === 'toc'}
