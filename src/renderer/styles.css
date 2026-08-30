@@ -592,35 +592,7 @@ button {
   color: var(--ink-soft);
 }
 
-/* ---------- PDF ---------- */
-
-.pdf-content {
-  max-width: 760px;
-}
-
-.pdf-list {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.pdf-page {
-  background: #fff;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.pdf-page canvas {
-  display: block;
-}
-
-/* 深色主题下反转 PDF 画面，同时保持色相自然 */
-:root[data-theme='dark'] .pdf-page {
-  filter: invert(0.9) hue-rotate(180deg);
-}
-
-/* ---------- 点击翻页区域 ---------- */
+/* ---------- 点击翻页区域与翻页按钮 ---------- */
 
 .zone {
   position: absolute;
@@ -639,4 +611,110 @@ button {
 
 .zone-right {
   right: 0;
+}
+
+/* 可见的翻页按钮：三种格式通用 */
+.reader-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  width: 44px;
+  height: 64px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.reader-nav:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
+.reader-nav-prev {
+  left: 14px;
+}
+
+.reader-nav-next {
+  right: 14px;
+}
+
+/* ---------- PDF ---------- */
+
+.pdf-content {
+  max-width: 760px;
+}
+
+.pdf-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pdf-page-wrap {
+  position: relative;
+}
+
+.pdf-page {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pdf-page canvas {
+  display: block;
+}
+
+/* 文字层：透明文字覆盖在画布上，提供可选中/可复制的正文 */
+.text-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.text-layer span {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+
+.text-layer ::selection {
+  background: rgba(66, 133, 244, 0.32);
+}
+
+/* 高亮矩形：叠加在页面之上，不拦截鼠标 */
+.pdf-overlays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.pdf-mark {
+  position: absolute;
+  background: rgba(255, 196, 0, 0.38);
+  border-radius: 1px;
+  mix-blend-mode: multiply;
+}
+
+:root[data-theme='dark'] .pdf-mark {
+  background: rgba(255, 196, 0, 0.3);
+  mix-blend-mode: screen;
+}
+
+/* 深色主题下反转 PDF 画面，同时保持色相自然 */
+:root[data-theme='dark'] .pdf-page {
+  filter: invert(0.9) hue-rotate(180deg);
 }

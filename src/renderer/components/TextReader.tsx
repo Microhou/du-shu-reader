@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import type {
   Annotation,
   AnnotationInput,
   EpubBook,
 } from '../../shared/types.ts';
+import {
+  applyMarks,
+  findAncestorWithAttr,
+  getTextOffset,
+} from '../annotations.ts';
 import { prepareChapterHtml } from '../sanitize.ts';
+import SelBubble from './SelBubble.tsx';
 
 interface TextReaderProps {
   kind: 'txt' | 'epub';
@@ -27,11 +40,14 @@ interface TextReaderProps {
 interface SelectionState {
   x: number;
   y: number;
-  paraIndex: number;
-  start: number;
-  end: number;
   text: string;
   noteMode: boolean;
+  /** TXT 锚点 */
+  paraIndex?: number;
+  start?: number;
+  end?: number;
+  /** EPUB 锚点 */
+  chapterIndex?: number;
 }
 
 const PARAS_PER_CHUNK = 200;
@@ -124,9 +140,9 @@ export default function TextReader({
     return nodes;
   };
 
-  /* ---------- 选区气泡（仅 TXT） ---------- */
+  /* ---------- 选区捕获（TXT 与 EPUB 各自锚定） ---------- */
 
-  const handleMouseUp = useCallback(() => {
+  const captureSelection = useCallback(() => {
     window.setTimeout(() => {
       const selection = document.getSelection();
       if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
@@ -139,39 +155,75 @@ export default function TextReader({
         return;
       }
       const range = selection.getRangeAt(0);
-      const anchorPara = findParaElement(range.startContainer, contentRef.current);
-      const focusPara = findParaElement(range.endContainer, contentRef.current);
-      if (!anchorPara || anchorPara !== focusPara) {
-        setSel(null);
-        return;
-      }
-      const paraIndex = Number(anchorPara.getAttribute('data-para'));
-      if (!Number.isInteger(paraIndex)) {
-        setSel(null);
-        return;
-      }
-      const paraText = anchorPara.textContent ?? '';
-      const start = paraText.indexOf(text);
-      if (start < 0) {
-        setSel(null);
-        return;
-      }
       const rect = range.getBoundingClientRect();
+
+      if (kind === 'txt') {
+        const anchorPara = findParaElement(range.startContainer, contentRef.current);
+        const focusPara = findParaElement(range.endContainer, contentRef.current);
+        if (!anchorPara || anchorPara !== focusPara) {
+          setSel(null);
+          return;
+        }
+        const paraIndex = Number(anchorPara.getAttribute('data-para'));
+        if (!Number.isInteger(paraIndex)) {
+          setSel(null);
+          return;
+        }
+        const paraText = anchorPara.textContent ?? '';
+        const start = paraText.indexOf(text);
+        if (start < 0) {
+          setSel(null);
+          return;
+        }
+        setSel({
+          x: Math.min(window.innerWidth - 220, Math.max(24, rect.left + rect.width / 2 - 70)),
+          y: Math.max(72, rect.top - 14),
+          text,
+          noteMode: false,
+          paraIndex,
+          start,
+          end: start + text.length,
+        });
+        return;
+      }
+
+      // EPUB：按章节纯文本偏移锚定
+      const chapterEl = findAncestorWithAttr(
+        range.startContainer,
+        contentRef.current,
+        'data-chapter',
+      );
+      const endChapterEl = findAncestorWithAttr(
+        range.endContainer,
+        contentRef.current,
+        'data-chapter',
+      );
+      if (!chapterEl || chapterEl !== endChapterEl) {
+        setSel(null);
+        return;
+      }
+      const chapterIndex = Number(chapterEl.getAttribute('data-chapter'));
+      if (!Number.isInteger(chapterIndex)) {
+        setSel(null);
+        return;
+      }
+      const start = getTextOffset(chapterEl, range.startContainer, range.startOffset);
+      const end = getTextOffset(chapterEl, range.endContainer, range.endOffset);
+      if (start === null || end === null || end <= start) {
+        setSel(null);
+        return;
+      }
       setSel({
         x: Math.min(window.innerWidth - 220, Math.max(24, rect.left + rect.width / 2 - 70)),
         y: Math.max(72, rect.top - 14),
-        paraIndex,
-        start,
-        end: start + text.length,
         text,
         noteMode: false,
+        chapterIndex,
+        start,
+        end,
       });
     }, 0);
-  }, []);
-
-  const clearSelection = () => {
-    document.getSelection()?.removeAllRanges();
-  };
+  }, [kind]);
 
   const saveSelection = (type: 'highlight' | 'note', note?: string) => {
     if (!sel) return;
@@ -179,17 +231,18 @@ export default function TextReader({
       type,
       ratio: getRatio(),
       paraIndex: sel.paraIndex,
+      chapterIndex: sel.chapterIndex,
       start: sel.start,
       end: sel.end,
       text: sel.text,
       note,
     });
-    clearSelection();
+    document.getSelection()?.removeAllRanges();
     setSel(null);
     setNoteDraft('');
   };
 
-  /* ---------- EPUB：blob URL + 消毒后渲染 ---------- */
+  /* ---------- EPUB：blob URL + 消毒渲染 + 内联标记 ---------- */
 
   const imageUrls = useMemo(() => {
     const map = new Map<string, string>();
@@ -213,6 +266,47 @@ export default function TextReader({
     return epub.chapters.map((c) => prepareChapterHtml(c.html, c.path, imageUrls));
   }, [epub, imageUrls]);
 
+  // 把 EPUB 划线/笔记同步为章节内的 <mark>
+  useEffect(() => {
+    if (kind !== 'epub' || !epub) return;
+    const root = contentRef.current;
+    if (!root) return;
+    const byChapter = new Map<number, Annotation[]>();
+    for (const a of annotations) {
+      if (
+        (a.type !== 'highlight' && a.type !== 'note') ||
+        a.chapterIndex === undefined ||
+        a.start == null ||
+        a.end == null
+      ) {
+        continue;
+      }
+      const list = byChapter.get(a.chapterIndex) ?? [];
+      list.push(a);
+      byChapter.set(a.chapterIndex, list);
+    }
+    for (const section of root.querySelectorAll<HTMLElement>('section[data-chapter]')) {
+      const idx = Number(section.getAttribute('data-chapter'));
+      applyMarks(section, (byChapter.get(idx) ?? []).map((a) => ({
+        id: a.id,
+        start: a.start!,
+        end: a.end!,
+        note: a.note,
+      })));
+    }
+  }, [kind, epub, annotations, chaptersHtml]);
+
+  // 点击 EPUB 内联划线 → 打开标注抽屉（事件委托，标记是命令式插入的）
+  const handleContentClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target instanceof HTMLElement && target.closest('mark[data-ann-id]')) {
+        onMarkActivate();
+      }
+    },
+    [onMarkActivate],
+  );
+
   const isEpub = kind === 'epub' && !!epub;
 
   return (
@@ -221,7 +315,8 @@ export default function TextReader({
         ref={contentRef}
         className={isEpub ? 'reader-content epub-content' : 'reader-content'}
         style={{ fontSize: `${fontSize}px` }}
-        onMouseUp={isEpub ? undefined : handleMouseUp}
+        onMouseUp={captureSelection}
+        onClick={isEpub ? handleContentClick : undefined}
       >
         {isEpub && epub
           ? chaptersHtml.map((html, i) => (
@@ -250,55 +345,22 @@ export default function TextReader({
             ))}
       </div>
 
-      {sel && !isEpub && (
-        <div className="sel-pop" style={{ left: sel.x, top: sel.y }}>
-          {sel.noteMode ? (
-            <div className="sel-note">
-              <textarea
-                autoFocus
-                rows={3}
-                placeholder="写点什么…"
-                value={noteDraft}
-                onChange={(e) => setNoteDraft(e.target.value)}
-              />
-              <div className="sel-note-actions">
-                <button className="reader-tool" onClick={() => saveSelection('note', noteDraft.trim() || undefined)}>
-                  保存
-                </button>
-                <button className="reader-tool" onClick={() => setSel(null)}>
-                  取消
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <button className="sel-btn" onClick={() => saveSelection('highlight')}>
-                划线
-              </button>
-              <button
-                className="sel-btn"
-                onClick={() => {
-                  setNoteDraft('');
-                  setSel({ ...sel, noteMode: true });
-                }}
-              >
-                笔记
-              </button>
-            </>
-          )}
-        </div>
+      {sel && (
+        <SelBubble
+          x={sel.x}
+          y={sel.y}
+          noteMode={sel.noteMode}
+          noteDraft={noteDraft}
+          onNoteDraftChange={setNoteDraft}
+          onHighlight={() => saveSelection('highlight')}
+          onStartNote={() => {
+            setNoteDraft('');
+            setSel({ ...sel, noteMode: true });
+          }}
+          onSaveNote={() => saveSelection('note', noteDraft.trim() || undefined)}
+          onCancel={() => setSel(null)}
+        />
       )}
     </>
   );
-}
-
-function useCallbackish(fn: () => void, deps: unknown[]): () => void {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useCallbackWrap(fn, deps);
-}
-
-function useCallbackWrap(fn: () => void, deps: unknown[]): () => void {
-  const ref = useRef(fn);
-  ref.current = fn;
-  return useRef(() => ref.current()).current as () => void;
 }

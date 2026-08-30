@@ -58,7 +58,10 @@ export default function AnnotationDrawer({
                         : a.text || '（无摘录）'}
                     </span>
                     {a.note && <span className="ann-note">{a.note}</span>}
-                    <span className="ann-time">{formatTime(a.createdAt)}</span>
+                    <span className="ann-time">
+                      {a.page !== undefined ? `第 ${a.page} 页 · ` : ''}
+                      {formatTime(a.createdAt)}
+                    </span>
                   </button>
                   <button
                     className="ann-delete"

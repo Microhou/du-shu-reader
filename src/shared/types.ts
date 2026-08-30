@@ -67,6 +67,14 @@ export type BookPayload =
 
 export type AnnotationType = 'bookmark' | 'highlight' | 'note';
 
+/** PDF 高亮的矩形（页面宽高的百分比 0-1） */
+export interface MarkRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface Annotation {
   id: string;
   type: AnnotationType;
@@ -77,6 +85,11 @@ export interface Annotation {
   paraIndex?: number;
   start?: number;
   end?: number;
+  /** 仅 EPUB：章节索引与章节纯文本内的 [start, end) 区间（DOM 文本节点锚定） */
+  chapterIndex?: number;
+  /** 仅 PDF：页码与页面百分比矩形组 */
+  page?: number;
+  rects?: MarkRect[];
   /** 划线/笔记的原文摘录 */
   text?: string;
   /** 笔记内容 */
@@ -89,6 +102,9 @@ export interface AnnotationInput {
   paraIndex?: number;
   start?: number;
   end?: number;
+  chapterIndex?: number;
+  page?: number;
+  rects?: MarkRect[];
   text?: string;
   note?: string;
 }

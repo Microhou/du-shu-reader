@@ -299,14 +299,27 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
   const jumpToAnnotation = useCallback(
     (a: Annotation) => {
       setDrawer(null);
+      // TXT：按段落定位；EPUB：定位到内联标记（退化到章节头）；PDF：定位到页
       if (a.paraIndex !== undefined) {
         jumpToPara(a.paraIndex);
         return;
       }
       const el = scrollRef.current;
-      if (el) {
-        el.scrollTop = ratioToOffset(a.ratio, el.scrollHeight, el.clientHeight);
+      if (!el) return;
+      if (a.chapterIndex !== undefined) {
+        const mark = el.querySelector(`[data-ann-id="${a.id}"]`);
+        if (mark) {
+          mark.scrollIntoView({ block: 'center' });
+          return;
+        }
+        el.querySelector(`[data-chapter="${a.chapterIndex}"]`)?.scrollIntoView({ block: 'start' });
+        return;
       }
+      if (a.page !== undefined) {
+        el.querySelector(`[data-pdf-page="${a.page}"]`)?.scrollIntoView({ block: 'start' });
+        return;
+      }
+      el.scrollTop = ratioToOffset(a.ratio, el.scrollHeight, el.clientHeight);
     },
     [jumpToPara],
   );
@@ -427,8 +440,12 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
           <div className="reader-content pdf-content">
             <PdfReader
               data={pdfData}
+              annotations={annotations}
+              onAddAnnotation={addAnnotation}
+              getRatio={() => ratioRef.current}
               onNumPages={onNumPages}
               onError={onPdfError}
+              scrollToken={scrollToken}
             />
           </div>
         ) : payload.kind === 'epub' ? (
@@ -458,20 +475,31 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
         )}
       </div>
 
-      {!isPdf && (
-        <>
-          <button
-            className="zone zone-left"
-            title="上一页"
-            onClick={() => turnPage(-1)}
-          />
-          <button
-            className="zone zone-right"
-            title="下一页"
-            onClick={() => turnPage(1)}
-          />
-        </>
-      )}
+      <button
+        className="reader-nav reader-nav-prev"
+        title="上一页"
+        onClick={() => turnPage(-1)}
+      >
+        ‹
+      </button>
+      <button
+        className="reader-nav reader-nav-next"
+        title="下一页"
+        onClick={() => turnPage(1)}
+      >
+        ›
+      </button>
+
+      <button
+        className="zone zone-left"
+        title="上一页"
+        onClick={() => turnPage(-1)}
+      />
+      <button
+        className="zone zone-right"
+        title="下一页"
+        onClick={() => turnPage(1)}
+      />
 
       <TocDrawer
         open={drawer === 'toc'}
