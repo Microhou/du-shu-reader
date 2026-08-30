@@ -160,6 +160,21 @@ export async function parseEpub(data: Uint8Array): Promise<EpubBook> {
     toc = chapters.map((c, i) => ({ label: c.title, chapterIndex: i }));
   }
 
+  // 封面：EPUB3 优先（properties 含 cover-image），回退 EPUB2（<meta name="cover">）
+  let cover: EpubBook['cover'];
+  let coverItem = [...manifest.values()].find((i) => /\bcover-image\b/.test(i.properties));
+  if (!coverItem) {
+    const metaRef = opf.match(
+      /<meta\b[^>]*name=["']cover["'][^>]*content=["']([^"']+)["']/i,
+    )?.[1];
+    if (metaRef) coverItem = manifest.get(metaRef);
+  }
+  if (coverItem && coverItem.mediaType.startsWith('image/')) {
+    const path = resolve(coverItem.href);
+    const entry = zip.entry(path);
+    if (entry) cover = { data: await zip.read(entry), mediaType: coverItem.mediaType };
+  }
+
   // 图片资源（渲染层转 blob URL 后重写引用）
   const images: Record<string, Uint8Array> = {};
   for (const item of manifest.values()) {
@@ -169,5 +184,5 @@ export async function parseEpub(data: Uint8Array): Promise<EpubBook> {
     if (entry) images[path] = await zip.read(entry);
   }
 
-  return { chapters, toc, images };
+  return { chapters, toc, images, cover };
 }

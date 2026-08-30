@@ -17,7 +17,7 @@ const OPF = `<?xml version="1.0"?>
     <item id="c1" href="chap1.xhtml" media-type="application/xhtml+xml"/>
     <item id="c2" href="chap2.xhtml" media-type="application/xhtml+xml"/>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="img" href="images/logo.png" media-type="image/png"/>
+    <item id="img" href="images/logo.png" media-type="image/png" properties="cover-image"/>
   </manifest>
   <spine><itemref idref="c1"/><itemref idref="c2"/></spine>
 </package>`;
@@ -80,6 +80,10 @@ test('parseEpub：章节、目录（nav 优先）、图片', async () => {
     Array.from(book.images['OEBPS/images/logo.png']),
     [137, 80, 78, 71, 1, 2, 3],
   );
+
+  assert.ok(book.cover, 'EPUB3 cover-image 应被提取');
+  assert.equal(book.cover?.mediaType, 'image/png');
+  assert.deepEqual(Array.from(book.cover?.data ?? []), [137, 80, 78, 71, 1, 2, 3]);
 });
 
 test('parseEpub：无 nav/NCX 时目录退化为章节标题', async () => {

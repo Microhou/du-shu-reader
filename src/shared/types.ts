@@ -19,6 +19,8 @@ export interface BookMeta {
   format: BookFormat;
   /** 累计阅读时长（秒） */
   readSeconds: number;
+  /** 导入时生成的封面缩略图（data URL，可选；TXT 无封面） */
+  coverThumb?: string;
 }
 
 /** 全局排版设置（localStorage 持久化） */
@@ -54,6 +56,8 @@ export interface EpubBook {
   toc: EpubTocItem[];
   /** 图片资源：zip 内规范化路径 → 字节 */
   images: Record<string, Uint8Array>;
+  /** 封面（EPUB2 meta / EPUB3 cover-image），可能缺失 */
+  cover?: { data: Uint8Array; mediaType: string };
 }
 
 /* ---------- 书籍内容的存储形态 ---------- */

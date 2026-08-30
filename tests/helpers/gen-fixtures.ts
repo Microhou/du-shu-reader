@@ -25,7 +25,7 @@ const opf = `<?xml version="1.0"?>
     <item id="c2" href="c2.xhtml" media-type="application/xhtml+xml"/>
     <item id="c3" href="c3.xhtml" media-type="application/xhtml+xml"/>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="img" href="images/dot.png" media-type="image/png"/>
+    <item id="img" href="images/dot.png" media-type="image/png" properties="cover-image"/>
   </manifest>
   <spine><itemref idref="c1"/><itemref idref="c2"/><itemref idref="c3"/></spine>
 </package>`;
@@ -40,16 +40,23 @@ const nav = `<?xml version="1.0" encoding="utf-8"?>
 <li><a href="c3.xhtml">第三章 归途</a></li>
 </ol></nav></body></html>`;
 
-const epubBytes = buildZip([
-  { name: 'mimetype', data: new TextEncoder().encode('application/epub+zip') },
-  { name: 'META-INF/container.xml', data: new TextEncoder().encode(container), compress: true },
-  { name: 'OEBPS/content.opf', data: new TextEncoder().encode(opf), compress: true },
-  { name: 'OEBPS/nav.xhtml', data: new TextEncoder().encode(nav), compress: true },
-  { name: 'OEBPS/c1.xhtml', data: new TextEncoder().encode(chapter(1, 30)), compress: true },
-  { name: 'OEBPS/c2.xhtml', data: new TextEncoder().encode(chapter(2, 40)), compress: true },
-  { name: 'OEBPS/c3.xhtml', data: new TextEncoder().encode(chapter(3, 20)), compress: true },
-  { name: 'OEBPS/images/dot.png', data: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 1, 2]), compress: true },
-]);
+  // 真实可解码的 1x1 PNG（深蓝色）
+  const dotPng = new Uint8Array(
+    Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      'base64',
+    ),
+  );
+  const epubBytes = buildZip([
+    { name: 'mimetype', data: new TextEncoder().encode('application/epub+zip') },
+    { name: 'META-INF/container.xml', data: new TextEncoder().encode(container), compress: true },
+    { name: 'OEBPS/content.opf', data: new TextEncoder().encode(opf), compress: true },
+    { name: 'OEBPS/nav.xhtml', data: new TextEncoder().encode(nav), compress: true },
+    { name: 'OEBPS/c1.xhtml', data: new TextEncoder().encode(chapter(1, 30)), compress: true },
+    { name: 'OEBPS/c2.xhtml', data: new TextEncoder().encode(chapter(2, 40)), compress: true },
+    { name: 'OEBPS/c3.xhtml', data: new TextEncoder().encode(chapter(3, 20)), compress: true },
+    { name: 'OEBPS/images/dot.png', data: dotPng, compress: true },
+  ]);
 writeFileSync(join(tmp, 'sample-book.epub'), epubBytes);
 console.log('EPUB:', join(tmp, 'sample-book.epub'), epubBytes.length, 'bytes');
 

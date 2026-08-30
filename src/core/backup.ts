@@ -32,7 +32,13 @@ export interface BackupBook {
  */
 export type BackupPayload =
   | { kind: 'txt'; text: string }
-  | { kind: 'epub'; book: Omit<EpubBook, 'images'> & { images: Record<string, string> } }
+  | {
+      kind: 'epub';
+      book: Omit<EpubBook, 'images' | 'cover'> & {
+        images: Record<string, string>;
+        cover?: { data: { __bytes: string }; mediaType: string };
+      };
+    }
   | { kind: 'pdf'; data: { __bytes: string } };
 
 export function bytesToBase64(bytes: Uint8Array): string {
@@ -73,7 +79,10 @@ export function buildBackupBook(
     for (const [path, bytes] of Object.entries(payload.book.images)) {
       images[path] = bytesToBase64(bytes);
     }
-    backupPayload = { kind: 'epub', book: { ...payload.book, images } };
+    const cover = payload.book.cover
+      ? { data: { __bytes: bytesToBase64(payload.book.cover.data) }, mediaType: payload.book.cover.mediaType }
+      : undefined;
+    backupPayload = { kind: 'epub', book: { ...payload.book, images, cover } };
   } else {
     backupPayload = { kind: 'pdf', data: { __bytes: bytesToBase64(payload.data) } };
   }
@@ -90,7 +99,10 @@ export function revivePayload(payload: BackupPayload): BookPayload {
   for (const [path, b64] of Object.entries(payload.book.images)) {
     images[path] = base64ToBytes(b64);
   }
-  return { kind: 'epub', book: { ...payload.book, images } };
+  const cover = payload.book.cover
+    ? { data: base64ToBytes(payload.book.cover.data.__bytes), mediaType: payload.book.cover.mediaType }
+    : undefined;
+  return { kind: 'epub', book: { ...payload.book, images, cover } };
 }
 
 export function parseBackup(raw: string): BackupFile {

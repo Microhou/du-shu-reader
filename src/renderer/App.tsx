@@ -18,6 +18,7 @@ import type {
 import Bookshelf from './components/Bookshelf.tsx';
 import Reader from './components/Reader.tsx';
 import { library } from './library.ts';
+import { makeImageThumb, makePdfThumb } from './thumbs.ts';
 
 type View = { name: 'shelf' } | { name: 'reader'; bookId: string };
 
@@ -67,15 +68,23 @@ export default function App() {
             await library.addBook(title, 'txt', { kind: 'txt', text: content });
           } else if (format === 'epub') {
             const book = await parseEpub(file.data);
-            await library.addBook(titleFromFilename(file.name), 'epub', {
-              kind: 'epub',
-              book,
-            });
+            const coverThumb = book.cover
+              ? await makeImageThumb(book.cover.data, book.cover.mediaType)
+              : undefined;
+            await library.addBook(
+              titleFromFilename(file.name),
+              'epub',
+              { kind: 'epub', book },
+              { coverThumb },
+            );
           } else {
-            await library.addBook(titleFromFilename(file.name), 'pdf', {
-              kind: 'pdf',
-              data: file.data,
-            });
+            const coverThumb = await makePdfThumb(file.data);
+            await library.addBook(
+              titleFromFilename(file.name),
+              'pdf',
+              { kind: 'pdf', data: file.data },
+              { coverThumb },
+            );
           }
           added += 1;
         } catch {

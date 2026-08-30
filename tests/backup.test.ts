@@ -45,7 +45,7 @@ test('TXT payload 备份往返一致', () => {
   assert.deepEqual(revived, payload);
 });
 
-test('EPUB payload：图片二进制经 base64 往返无损', () => {
+test('EPUB payload：图片与封面二进制经 base64 往返无损', () => {
   const image = new Uint8Array([137, 80, 78, 71, 0, 255, 1, 254]);
   const payload: BookPayload = {
     kind: 'epub',
@@ -53,18 +53,24 @@ test('EPUB payload：图片二进制经 base64 往返无损', () => {
       chapters: [{ title: '一', path: 'c1.xhtml', html: '<p>hi</p>' }],
       toc: [{ label: '一', chapterIndex: 0 }],
       images: { 'img/a.png': image },
+      cover: { data: image, mediaType: 'image/png' },
     },
   };
   const backup = buildBackupBook(meta(), payload, []);
   const json = JSON.stringify(backup);
-  // 备份形态里图片必须是 base64 字符串（回归：Uint8Array 直接序列化会丢成 {}）
-  const images = (
+  // 备份形态里图片与封面必须是 base64 字符串（回归：Uint8Array 直接序列化会丢成 {}）
+  const book = (
     JSON.parse(json) as {
-      payload: { book: { images: Record<string, unknown> } };
+      payload: {
+        book: {
+          images: Record<string, unknown>;
+          cover?: { data: { __bytes: unknown }; mediaType: string };
+        };
+      };
     }
-  ).payload.book.images;
-  assert.equal(typeof images['img/a.png'], 'string');
-  assert.ok((images['img/a.png'] as string).length > 0);
+  ).payload.book;
+  assert.equal(typeof book.images['img/a.png'], 'string');
+  assert.equal(typeof book.cover?.data.__bytes, 'string');
   const revived = revivePayload((JSON.parse(json) as { payload: never }).payload);
   assert.deepEqual(revived, payload);
 });

@@ -11,7 +11,12 @@ import type { KeyValueStore } from './storage.ts';
 
 export interface Library {
   listBooks(): Promise<BookMeta[]>;
-  addBook(title: string, format: BookFormat, payload: BookPayload): Promise<BookMeta>;
+  addBook(
+    title: string,
+    format: BookFormat,
+    payload: BookPayload,
+    extras?: { coverThumb?: string },
+  ): Promise<BookMeta>;
   getBookContent(id: string): Promise<BookPayload | null>;
   saveProgress(id: string, ratio: number): Promise<BookMeta | null>;
   /** 累计阅读秒数（同时刷新 lastReadAt） */
@@ -61,7 +66,7 @@ export function createLibrary(storage: KeyValueStore): Library {
       return loadList();
     },
 
-    async addBook(title, format, payload) {
+    async addBook(title, format, payload, extras) {
       const list = await loadList();
       const book: BookMeta = {
         id: newId(),
@@ -71,6 +76,7 @@ export function createLibrary(storage: KeyValueStore): Library {
         progress: 0,
         format,
         readSeconds: 0,
+        ...(extras?.coverThumb ? { coverThumb: extras.coverThumb } : {}),
       };
       list.unshift(book);
       await storage.set(`book:${book.id}`, payload);

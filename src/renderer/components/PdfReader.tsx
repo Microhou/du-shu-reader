@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 import type { Annotation, AnnotationInput, MarkRect } from '../../shared/types.ts';
 import { findAncestorWithAttr } from '../annotations.ts';
+import { pdfjs } from '../pdf.ts';
 import SelBubble from './SelBubble.tsx';
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 interface PdfReaderProps {
   /** 必须是拷贝：pdf.js 会把缓冲转移给 worker 导致原缓冲分离 */

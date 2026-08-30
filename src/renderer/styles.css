@@ -65,10 +65,8 @@ button {
 /* ---------- 书架 ---------- */
 
 .shelf {
-  max-width: 860px;
-  margin: 0 auto;
   min-height: 100%;
-  padding: 48px 24px 64px;
+  padding-bottom: 64px;
 }
 
 .shelf.dragging {
@@ -78,10 +76,118 @@ button {
   background: rgba(154, 107, 47, 0.06);
 }
 
-.shelf-header {
+/* 顶部品牌区：居中品牌 + 搜索 + 最近在读（参考微信读书首页版式） */
+.shelf-hero {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px 24px 26px;
+  background: var(--paper-raised);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.brand-icon {
+  display: flex;
+  color: var(--accent);
+}
+
+.search-box {
+  width: min(560px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+}
+
+.search-box svg {
+  flex: none;
+  color: var(--ink-soft);
+}
+
+.search-box input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+
+.search-clear {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.search-clear:hover {
+  color: var(--ink);
+}
+
+.recent-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recent-label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.recent-chip {
+  max-width: 220px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 16px;
+  background: var(--paper-dark);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-chip:hover {
+  filter: brightness(0.96);
+}
+
+.shelf-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 32px 0;
+}
+
+.section-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.section-row h2 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.06em;
 }
 
 .shelf-actions {
@@ -140,18 +246,20 @@ button {
   line-height: 2;
 }
 
-.shelf-list {
+.book-grid {
   list-style: none;
-  margin: 36px 0 0;
+  margin: 24px 0 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
 }
 
 .book-card {
   position: relative;
-  padding: 18px 16px 14px;
+  display: flex;
+  gap: 14px;
+  padding: 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--paper-raised);
@@ -160,14 +268,50 @@ button {
 }
 
 .book-card:hover {
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
   transform: translateY(-1px);
 }
 
+.book-cover {
+  flex: none;
+  width: 64px;
+  height: 88px;
+  border-radius: 3px;
+  object-fit: cover;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+/* 无封面的书：书名首字 + 按书 id 稳定取色的渐变占位 */
+.book-cover-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 30px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  user-select: none;
+}
+
+.ph-0 { background: linear-gradient(135deg, #8db1cf, #50779a); }
+.ph-1 { background: linear-gradient(135deg, #a4c2a1, #62875f); }
+.ph-2 { background: linear-gradient(135deg, #d1a687, #9c6f4b); }
+.ph-3 { background: linear-gradient(135deg, #b6a3cf, #7c659e); }
+.ph-4 { background: linear-gradient(135deg, #cf9daa, #9a5f70); }
+.ph-5 { background: linear-gradient(135deg, #a9c4c9, #5f868d); }
+
+.book-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+}
+
 .book-title {
-  font-size: 17px;
-  margin-bottom: 12px;
-  padding-right: 20px;
+  font-size: 15px;
+  font-weight: 600;
+  padding-right: 18px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -175,22 +319,15 @@ button {
 
 .book-meta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   color: var(--ink-soft);
 }
 
-.book-meta + .book-meta {
-  margin-top: 6px;
-}
-
-.book-facts {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.book-meta-sub {
+  justify-content: space-between;
+  font-size: 12px;
 }
 
 .book-format {
