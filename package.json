@@ -1,8 +1,8 @@
 {
   "name": "du-shu-reader",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "读书阅读器 — 本地 TXT 电子书阅读器",
+  "description": "读书阅读器 — 本地电子书阅读器（TXT / EPUB / PDF）",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
