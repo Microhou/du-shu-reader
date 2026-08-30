@@ -43,3 +43,22 @@ export function findParaIndexForOffset(
   }
   return ans;
 }
+
+/**
+ * 每章覆盖的段落下标区间 [start, end)（end 不含）。
+ * 首章之前的段落（如文案）并入第 0 章；无章节标记时返回 [[0, 段落总数]]，
+ * 使整本书退化为单章。
+ */
+export function chapterParaRanges(
+  paraStarts: number[],
+  chapters: TxtChapter[],
+): Array<[number, number]> {
+  const total = paraStarts.length;
+  if (chapters.length === 0) return [[0, total]];
+  const starts = chapters.map((c) => findParaIndexForOffset(paraStarts, c.offset));
+  return chapters.map((_, i) => {
+    const start = i === 0 ? 0 : starts[i];
+    const end = i + 1 < chapters.length ? starts[i + 1] : total;
+    return [Math.min(start, end), end];
+  });
+}

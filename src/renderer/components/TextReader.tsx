@@ -22,18 +22,20 @@ import SelBubble from './SelBubble.tsx';
 
 interface TextReaderProps {
   kind: 'txt' | 'epub';
-  /** TXT：全文段落（已过滤空行，全局索引与 data-para 一致） */
+  /** TXT：当前章节的段落（data-para = 全局段落下标 = paraStart + 数组下标） */
   paras: string[];
-  /** EPUB：解析产物 */
+  paraStart: number;
+  /** EPUB：当前章节下标与整本解析产物 */
+  chapterIndex: number;
   epub: EpubBook | null;
+  /** TXT 章节标题（识别到章节标记时展示） */
+  chapterTitle?: string;
+  /** 当前章节相关的标注（Reader 已按章节过滤） */
   annotations: Annotation[];
   fontSize: number;
   onAddAnnotation: (input: AnnotationInput) => void;
-  /** 当前滚动比例，供标注记录兜底跳转 */
   getRatio: () => number;
-  /** 点击正文内划线时打开标注抽屉 */
   onMarkActivate: () => void;
-  /** 父级滚动时递增，用于关闭选区气泡 */
   scrollToken: number;
 }
 
@@ -66,7 +68,10 @@ function findParaElement(node: Node | null, root: HTMLElement | null): HTMLEleme
 export default function TextReader({
   kind,
   paras,
+  paraStart,
+  chapterIndex,
   epub,
+  chapterTitle,
   annotations,
   fontSize,
   onAddAnnotation,
@@ -83,17 +88,21 @@ export default function TextReader({
     setSel(null);
   }, [scrollToken]);
 
-  /* ---------- TXT：分块渲染 + 内联划线 ---------- */
+  const isEpub = kind === 'epub' && !!epub;
+
+  /* ---------- TXT：段内分块渲染 + 内联划线 ---------- */
 
   const chunks = useMemo(() => {
     const out: { index: number; text: string }[][] = [];
     for (let i = 0; i < paras.length; i += PARAS_PER_CHUNK) {
       out.push(
-        paras.slice(i, i + PARAS_PER_CHUNK).map((text, j) => ({ index: i + j, text })),
+        paras
+          .slice(i, i + PARAS_PER_CHUNK)
+          .map((text, j) => ({ index: paraStart + i + j, text })),
       );
     }
     return out;
-  }, [paras]);
+  }, [paras, paraStart]);
 
   const marksByPara = useMemo(() => {
     const map = new Map<number, Annotation[]>();
@@ -139,6 +148,56 @@ export default function TextReader({
     if (pos < text.length) nodes.push(<span key={key++}>{text.slice(pos)}</span>);
     return nodes;
   };
+
+  /* ---------- EPUB：blob URL + 当前章节消毒渲染 + 内联标记 ---------- */
+
+  const imageUrls = useMemo(() => {
+    const map = new Map<string, string>();
+    if (epub) {
+      for (const [path, bytes] of Object.entries(epub.images)) {
+        map.set(path, URL.createObjectURL(new Blob([new Uint8Array(bytes)])));
+      }
+    }
+    return map;
+  }, [epub]);
+
+  useEffect(
+    () => () => {
+      imageUrls.forEach((url) => URL.revokeObjectURL(url));
+    },
+    [imageUrls],
+  );
+
+  const chapterHtml = useMemo(() => {
+    if (!epub) return '';
+    const chapter = epub.chapters[chapterIndex];
+    if (!chapter) return '';
+    return prepareChapterHtml(chapter.html, chapter.path, imageUrls);
+  }, [epub, chapterIndex, imageUrls]);
+
+  // 把当前章节的划线/笔记合成为内联 <mark>
+  useEffect(() => {
+    if (!isEpub) return;
+    const root = contentRef.current;
+    if (!root) return;
+    applyMarks(
+      root,
+      annotations
+        .filter((a) => a.start != null && a.end != null)
+        .map((a) => ({ id: a.id, start: a.start!, end: a.end!, note: a.note })),
+    );
+  }, [isEpub, annotations, chapterHtml]);
+
+  // 点击 EPUB 内联划线 → 打开标注抽屉（事件委托，标记是命令式插入的）
+  const handleContentClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target instanceof HTMLElement && target.closest('mark[data-ann-id]')) {
+        onMarkActivate();
+      }
+    },
+    [onMarkActivate],
+  );
 
   /* ---------- 选区捕获（TXT 与 EPUB 各自锚定） ---------- */
 
@@ -202,8 +261,8 @@ export default function TextReader({
         setSel(null);
         return;
       }
-      const chapterIndex = Number(chapterEl.getAttribute('data-chapter'));
-      if (!Number.isInteger(chapterIndex)) {
+      const chapterIdx = Number(chapterEl.getAttribute('data-chapter'));
+      if (!Number.isInteger(chapterIdx)) {
         setSel(null);
         return;
       }
@@ -218,7 +277,7 @@ export default function TextReader({
         y: Math.max(72, rect.top - 14),
         text,
         noteMode: false,
-        chapterIndex,
+        chapterIndex: chapterIdx,
         start,
         end,
       });
@@ -242,73 +301,6 @@ export default function TextReader({
     setNoteDraft('');
   };
 
-  /* ---------- EPUB：blob URL + 消毒渲染 + 内联标记 ---------- */
-
-  const imageUrls = useMemo(() => {
-    const map = new Map<string, string>();
-    if (epub) {
-      for (const [path, bytes] of Object.entries(epub.images)) {
-        map.set(path, URL.createObjectURL(new Blob([new Uint8Array(bytes)])));
-      }
-    }
-    return map;
-  }, [epub]);
-
-  useEffect(
-    () => () => {
-      imageUrls.forEach((url) => URL.revokeObjectURL(url));
-    },
-    [imageUrls],
-  );
-
-  const chaptersHtml = useMemo(() => {
-    if (!epub) return [];
-    return epub.chapters.map((c) => prepareChapterHtml(c.html, c.path, imageUrls));
-  }, [epub, imageUrls]);
-
-  // 把 EPUB 划线/笔记同步为章节内的 <mark>
-  useEffect(() => {
-    if (kind !== 'epub' || !epub) return;
-    const root = contentRef.current;
-    if (!root) return;
-    const byChapter = new Map<number, Annotation[]>();
-    for (const a of annotations) {
-      if (
-        (a.type !== 'highlight' && a.type !== 'note') ||
-        a.chapterIndex === undefined ||
-        a.start == null ||
-        a.end == null
-      ) {
-        continue;
-      }
-      const list = byChapter.get(a.chapterIndex) ?? [];
-      list.push(a);
-      byChapter.set(a.chapterIndex, list);
-    }
-    for (const section of root.querySelectorAll<HTMLElement>('section[data-chapter]')) {
-      const idx = Number(section.getAttribute('data-chapter'));
-      applyMarks(section, (byChapter.get(idx) ?? []).map((a) => ({
-        id: a.id,
-        start: a.start!,
-        end: a.end!,
-        note: a.note,
-      })));
-    }
-  }, [kind, epub, annotations, chaptersHtml]);
-
-  // 点击 EPUB 内联划线 → 打开标注抽屉（事件委托，标记是命令式插入的）
-  const handleContentClick = useCallback(
-    (e: React.MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target instanceof HTMLElement && target.closest('mark[data-ann-id]')) {
-        onMarkActivate();
-      }
-    },
-    [onMarkActivate],
-  );
-
-  const isEpub = kind === 'epub' && !!epub;
-
   return (
     <>
       <div
@@ -318,16 +310,16 @@ export default function TextReader({
         onMouseUp={captureSelection}
         onClick={isEpub ? handleContentClick : undefined}
       >
-        {isEpub && epub
-          ? chaptersHtml.map((html, i) => (
-              <section
-                key={i}
-                data-chapter={i}
-                className="epub-chapter"
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
-            ))
-          : chunks.map((chunk, ci) => (
+        {isEpub ? (
+          <section
+            data-chapter={chapterIndex}
+            className="epub-chapter"
+            dangerouslySetInnerHTML={{ __html: chapterHtml }}
+          />
+        ) : (
+          <>
+            {chapterTitle && <h1 className="chapter-title">{chapterTitle}</h1>}
+            {chunks.map((chunk, ci) => (
               <div
                 key={ci}
                 className="reader-chunk"
@@ -343,6 +335,8 @@ export default function TextReader({
                 ))}
               </div>
             ))}
+          </>
+        )}
       </div>
 
       {sel && (

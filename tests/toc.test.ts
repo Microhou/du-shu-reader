@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  chapterParaRanges,
   findParaIndexForOffset,
   parseTxtChapters,
 } from '../src/core/toc.ts';
@@ -49,4 +50,35 @@ test('findParaIndexForOffset 二分定位', () => {
   assert.equal(findParaIndexForOffset(starts, 34), 2);
   assert.equal(findParaIndexForOffset(starts, 100), 3, '越界钳到最后一段');
   assert.equal(findParaIndexForOffset([], 5), 0, '空数组兜底');
+});
+
+test('chapterParaRanges 章节段落区间', () => {
+  // 章节：第一章(偏移10) → 段1；第二章(偏移25) → 段3；其后到结尾
+  const paraStarts = [0, 10, 15, 25, 30, 40];
+  const chapters = [
+    { title: '第一章', offset: 10 },
+    { title: '第二章', offset: 25 },
+  ];
+  assert.deepEqual(chapterParaRanges(paraStarts, chapters), [
+    [0, 3],
+    [3, 6],
+  ]);
+});
+
+test('chapterParaRanges 首章前内容并入第 0 章', () => {
+  const paraStarts = [0, 50, 100, 150];
+  const chapters = [
+    { title: '序', offset: 50 },
+    { title: '第一章', offset: 100 },
+  ];
+  // 段 0（首章标记之前的内容）并入第 0 章
+  assert.deepEqual(chapterParaRanges(paraStarts, chapters), [
+    [0, 2],
+    [2, 4],
+  ]);
+});
+
+test('chapterParaRanges 无章节时整本退化为单章', () => {
+  assert.deepEqual(chapterParaRanges([0, 10, 20], []), [[0, 3]]);
+  assert.deepEqual(chapterParaRanges([], []), [[0, 0]]);
 });

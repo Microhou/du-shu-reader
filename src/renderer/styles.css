@@ -777,6 +777,68 @@ button {
   color: var(--ink-soft);
 }
 
+/* ---------- 章节导航（章底"下一章"，参考微信读书） ---------- */
+
+.chapter-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 20px 48px;
+}
+
+.chapter-nav button {
+  min-width: 220px;
+  padding: 13px 28px;
+  border: none;
+  border-radius: 8px;
+  background: var(--sheet-bg);
+  color: var(--accent);
+  font-size: 15px;
+  letter-spacing: 0.25em;
+  text-indent: 0.25em;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.chapter-nav button:hover {
+  filter: brightness(0.97);
+}
+
+.chapter-nav-top {
+  max-width: 800px;
+  margin: 16px auto 0;
+  justify-content: flex-start;
+  padding: 0 12px 4px;
+}
+
+.chapter-nav-top button {
+  min-width: auto;
+  padding: 6px 10px;
+  background: transparent;
+  box-shadow: none;
+  letter-spacing: 0.1em;
+  text-indent: 0;
+}
+
+.chapter-end {
+  color: var(--ink-soft);
+  font-size: 14px;
+  letter-spacing: 0.4em;
+  text-indent: 0.4em;
+}
+
+/* TXT 章节标题 */
+.chapter-title {
+  font-size: 1.7em;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.5;
+  margin: 0 0 0.8em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--line);
+}
+
 /* ---------- 右侧悬浮工具栏（参考微信读书阅读页） ---------- */
 
 .reader-rail {
@@ -824,62 +886,9 @@ button {
   }
 }
 
-/* ---------- 点击翻页区域与翻页按钮 ---------- */
-
-.zone {
-  position: absolute;
-  top: 52px;
-  bottom: 0;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  z-index: 5;
-}
-
-/* 翻页区只占正文栏两侧的空白，不能覆盖文字——否则行首/行尾的文字
-   无法被鼠标选中划线（此前 33% 宽的透明区域恰好压住每行前后约 4 个字）。
-   380px = PDF 栏（760px）的半宽，对更窄的 TXT/EPUB 栏同样留足余量。 */
-.zone-left {
-  left: 0;
-  right: calc(50% + 380px);
-}
-
-.zone-right {
-  right: 0;
-  left: calc(50% + 380px);
-}
-
-/* 可见的翻页按钮：三种格式通用 */
-.reader-nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 6;
-  width: 44px;
-  height: 64px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper-raised);
-  color: var(--ink-soft);
-  font-size: 26px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
-}
-
-.reader-nav:hover {
-  opacity: 1;
-  color: var(--ink);
-}
-
-.reader-nav-prev {
-  left: 14px;
-}
-
-.reader-nav-next {
-  right: 14px;
-}
+/* 翻页交互说明：滚动到章底用"下一章"按钮、章顶用"上一章"；
+   鼠标滚轮 / 键盘翻屏；左右点击翻页区与悬浮按钮已移除
+   （此前 33% 宽的透明区域恰好压住每行前后约 4 个字，导致无法划线）。 */
 
 /* ---------- PDF ---------- */
 

@@ -7,13 +7,12 @@ import {
   useState,
 } from 'react';
 
+import { offsetToPage, offsetToRatio, ratioToOffset } from '../../core/pager.ts';
 import {
-  offsetToPage,
-  offsetToRatio,
-  pageToOffset,
-  ratioToOffset,
-} from '../../core/pager.ts';
-import { parseTxtChapters, findParaIndexForOffset } from '../../core/toc.ts';
+  parseTxtChapters,
+  chapterParaRanges,
+  findParaIndexForOffset,
+} from '../../core/toc.ts';
 import { formatDuration } from '../../core/stats.ts';
 import type {
   Annotation,
@@ -35,12 +34,14 @@ interface ReaderProps {
   onBack: () => void;
 }
 
-interface PageInfo {
-  page: number;
-  pages: number;
-}
-
 type DrawerKind = 'toc' | 'annotations' | null;
+
+/** 章节渲染后的滚动意图：恢复比例 / 跳段落 / 跳标注 / 上一章落底 */
+interface ScrollAnchor {
+  ratioInChapter?: number;
+  paraIndex?: number;
+  annId?: string;
+}
 
 const SAVE_DEBOUNCE_MS = 400;
 const STATS_FLUSH_SECONDS = 30;
@@ -48,12 +49,13 @@ const STATS_FLUSH_SECONDS = 30;
 export default function Reader({ bookId, onBack }: ReaderProps) {
   const [meta, setMeta] = useState<BookMeta | null>(null);
   const [payload, setPayload] = useState<BookPayload | null>(null);
-  const [pageInfo, setPageInfo] = useState<PageInfo>({ page: 1, pages: 1 });
+  const [chapterIndex, setChapterIndex] = useState(0);
   const [drawer, setDrawer] = useState<DrawerKind>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [numPages, setNumPages] = useState(0);
   const [todaySeconds, setTodaySeconds] = useState(0);
   const [scrollToken, setScrollToken] = useState(0);
+  const [pageLabel, setPageLabel] = useState('');
   const { fontSize, setFontSize, theme, cycleTheme } = useSettings();
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -66,6 +68,10 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
   drawerRef.current = drawer;
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
+  const chapterIndexRef = useRef(0);
+  chapterIndexRef.current = chapterIndex;
+  const navDirRef = useRef<'top' | 'prev' | null>(null);
+  const anchorRef = useRef<ScrollAnchor | null>(null);
 
   /* ---------- 载入 ---------- */
 
@@ -81,6 +87,8 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
         return;
       }
       initialRatioRef.current = readInitialRatio(bookId, found.progress);
+      // 恢复的兜底锚点：进章后按章内比例落位（章节模式会覆盖为按章换算的值）
+      anchorRef.current = { ratioInChapter: initialRatioRef.current };
       setMeta(found);
       setPayload(content);
     })();
@@ -97,7 +105,7 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
     void refreshAnnotations();
   }, [refreshAnnotations]);
 
-  /* ---------- TXT 派生：段落与章节定位 ---------- */
+  /* ---------- TXT 派生：全书段落、章节划分 ---------- */
 
   const txtParas = useMemo(() => {
     if (payload?.kind !== 'txt') return [];
@@ -115,72 +123,141 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
     return starts;
   }, [payload]);
 
-  const jumpToPara = useCallback(
-    (index: number) => {
-      const el = scrollRef.current;
-      const node = el?.querySelector(`[data-para="${index}"]`);
-      node?.scrollIntoView({ block: 'start' });
-    },
-    [],
+  const txtChapters = useMemo(
+    () => (payload?.kind === 'txt' ? parseTxtChapters(payload.text) : []),
+    [payload],
   );
 
-  const tocEntries = useMemo<TocEntry[]>(() => {
-    if (payload?.kind === 'txt') {
-      return parseTxtChapters(payload.text).map((c) => ({
-        label: c.title,
-        jump: () => jumpToPara(findParaIndexForOffset(paraStarts, c.offset)),
-      }));
+  const txtRanges = useMemo(
+    () => chapterParaRanges(paraStarts, txtChapters),
+    [paraStarts, txtChapters],
+  );
+
+  const isPdf = payload?.kind === 'pdf';
+  const isPdfRef = useRef(false);
+  isPdfRef.current = isPdf === true;
+  const chapterCount = isPdf
+    ? 0
+    : payload?.kind === 'epub'
+      ? payload.book.chapters.length
+      : txtRanges.length;
+  const chapterCountRef = useRef(0);
+  chapterCountRef.current = chapterCount;
+  const txtRangesRef = useRef(txtRanges);
+  txtRangesRef.current = txtRanges;
+
+  // 打开书籍时：全局进度比例 → 章节 + 章内比例（PDF 走兜底锚点）
+  useEffect(() => {
+    if (!payload || isPdf || chapterCount === 0) return;
+    const globalRatio = initialRatioRef.current;
+    const idx = Math.max(
+      0,
+      Math.min(chapterCount - 1, Math.floor(globalRatio * chapterCount)),
+    );
+    anchorRef.current = {
+      ratioInChapter: Math.min(1, globalRatio * chapterCount - idx),
+    };
+    setChapterIndex(idx);
+  }, [payload, isPdf, chapterCount]);
+
+  const txtChapter = useMemo(() => {
+    if (payload?.kind !== 'txt') return null;
+    const range = txtRanges[Math.min(chapterIndex, txtRanges.length - 1)] ?? [
+      0,
+      txtParas.length,
+    ];
+    return {
+      paras: txtParas.slice(range[0], range[1]),
+      paraStart: range[0],
+      title: txtChapters[Math.min(chapterIndex, txtChapters.length - 1)]?.title,
+    };
+  }, [payload, txtParas, txtRanges, txtChapters, chapterIndex]);
+
+  /* ---------- 当前章节相关的标注 ---------- */
+
+  const chapterAnnotations = useMemo(() => {
+    if (isPdf) return annotations;
+    if (payload?.kind === 'txt' && txtChapter) {
+      const s = txtChapter.paraStart;
+      const e = s + txtChapter.paras.length;
+      return annotations.filter(
+        (a) => a.paraIndex === undefined || (a.paraIndex >= s && a.paraIndex < e),
+      );
     }
     if (payload?.kind === 'epub') {
-      return payload.book.toc.map((t) => ({
-        label: t.label,
-        jump: () => {
-          scrollRef.current
-            ?.querySelector(`[data-chapter="${t.chapterIndex}"]`)
-            ?.scrollIntoView({ block: 'start' });
-        },
-      }));
+      return annotations.filter(
+        (a) => a.chapterIndex === undefined || a.chapterIndex === chapterIndex,
+      );
     }
-    return [];
-  }, [payload, paraStarts, jumpToPara]);
+    return annotations;
+  }, [annotations, payload, txtChapter, chapterIndex, isPdf]);
 
-  /* ---------- 进度：恢复 / 保存 / 翻页 ---------- */
+  /* ---------- 页码与进度 ---------- */
 
   const updatePageInfo = useCallback(() => {
     const el = scrollRef.current;
     if (!el || el.clientHeight <= 0) return;
-    ratioRef.current = offsetToRatio(
-      el.scrollTop,
-      el.scrollHeight,
-      el.clientHeight,
-    );
-    const total =
-      meta?.format === 'pdf' && numPages > 0
-        ? numPages
-        : Math.max(1, Math.ceil(el.scrollHeight / el.clientHeight));
-    setPageInfo({
-      page: offsetToPage(el.scrollTop, el.scrollHeight, el.clientHeight),
-      pages: total,
-    });
+    const max = el.scrollHeight - el.clientHeight;
+    const inRatio = max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 1;
+    const count = chapterCountRef.current;
+    if (meta?.format === 'pdf') {
+      ratioRef.current = inRatio;
+      setPageLabel(
+        numPages > 0
+          ? `第 ${Math.min(numPages, offsetToPage(el.scrollTop, el.scrollHeight, el.clientHeight))} / ${numPages} 页`
+          : '',
+      );
+    } else if (count > 0) {
+      ratioRef.current = Math.min(
+        1,
+        (chapterIndexRef.current + inRatio) / count,
+      );
+      setPageLabel(`第 ${chapterIndexRef.current + 1} / ${count} 章`);
+    } else {
+      ratioRef.current = inRatio;
+    }
   }, [meta, numPages]);
 
+  // 进度恢复 / 章节切换后的落位
   useLayoutEffect(() => {
-    if (!payload || restoredRef.current) return;
-    restoredRef.current = true;
-    ratioRef.current = initialRatioRef.current;
-    if (meta) document.title = `${meta.title} · 读书阅读器`;
     const el = scrollRef.current;
-    if (el) {
-      requestAnimationFrame(() => {
+    if (!el || !payload) return;
+    const hasPending =
+      anchorRef.current !== null ||
+      navDirRef.current !== null ||
+      !restoredRef.current;
+    if (!hasPending) return;
+
+    if (!restoredRef.current) {
+      restoredRef.current = true;
+      ratioRef.current = initialRatioRef.current;
+      if (meta) document.title = `${meta.title} · 读书阅读器`;
+    }
+
+    const raf = requestAnimationFrame(() => {
+      const anchor = anchorRef.current;
+      const nav = navDirRef.current;
+      if (anchor?.paraIndex !== undefined) {
+        el.querySelector(`[data-para="${anchor.paraIndex}"]`)?.scrollIntoView({ block: 'start' });
+      } else if (anchor?.annId) {
+        el.querySelector(`[data-ann-id="${anchor.annId}"]`)?.scrollIntoView({ block: 'center' });
+      } else if (anchor?.ratioInChapter !== undefined) {
         el.scrollTop = ratioToOffset(
-          ratioRef.current,
+          anchor.ratioInChapter,
           el.scrollHeight,
           el.clientHeight,
         );
-        updatePageInfo();
-      });
-    }
-  }, [payload, meta, updatePageInfo]);
+      } else if (nav === 'prev') {
+        el.scrollTop = el.scrollHeight;
+      } else {
+        el.scrollTop = 0;
+      }
+      anchorRef.current = null;
+      navDirRef.current = null;
+      updatePageInfo();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [payload, chapterIndex, meta, updatePageInfo]);
 
   const flushProgress = useCallback(() => {
     if (!restoredRef.current) return;
@@ -205,22 +282,26 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
     onBackRef.current();
   }, [flushProgress]);
 
-  const turnPage = useCallback((dir: 1 | -1) => {
+  /* ---------- 章节导航 ---------- */
+
+  const goChapter = useCallback(
+    (next: number, mode: 'top' | 'prev') => {
+      const count = chapterCountRef.current;
+      if (next < 0 || (count > 0 && next >= count)) return;
+      flushProgress();
+      navDirRef.current = mode;
+      setChapterIndex(next);
+    },
+    [flushProgress],
+  );
+
+  const scrollScreen = useCallback((dir: 1 | -1) => {
     const el = scrollRef.current;
     if (!el) return;
-    const current = offsetToPage(
-      el.scrollTop,
-      el.scrollHeight,
-      el.clientHeight,
-    );
-    const target = pageToOffset(
-      current + dir,
-      el.scrollHeight,
-      el.clientHeight,
-    );
-    el.scrollTo({ top: target, behavior: 'smooth' });
+    el.scrollBy({ top: dir * el.clientHeight * 0.88, behavior: 'smooth' });
   }, []);
 
+  // 键盘：章内滚动一屏；到章底/章顶再按则切换章节
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -229,18 +310,34 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
         return;
       }
       if (drawerRef.current) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      const max = el.scrollHeight - el.clientHeight;
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
         e.preventDefault();
-        turnPage(1);
+        if (
+          !isPdfRef.current &&
+          el.scrollTop >= max - 2 &&
+          chapterIndexRef.current < chapterCountRef.current - 1
+        ) {
+          goChapter(chapterIndexRef.current + 1, 'top');
+          return;
+        }
+        scrollScreen(1);
       } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
-        turnPage(-1);
+        if (!isPdfRef.current && el.scrollTop <= 2 && chapterIndexRef.current > 0) {
+          goChapter(chapterIndexRef.current - 1, 'prev');
+          return;
+        }
+        scrollScreen(-1);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [turnPage, handleBack]);
+  }, [goChapter, scrollScreen, handleBack]);
 
+  // 关闭窗口 / 返回书架时兜底保存
   useEffect(() => {
     const onPageHide = () => flushProgress();
     window.addEventListener('pagehide', onPageHide);
@@ -296,34 +393,6 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
     addAnnotation({ type: 'bookmark', ratio: ratioRef.current });
   }, [addAnnotation]);
 
-  const jumpToAnnotation = useCallback(
-    (a: Annotation) => {
-      setDrawer(null);
-      // TXT：按段落定位；EPUB：定位到内联标记（退化到章节头）；PDF：定位到页
-      if (a.paraIndex !== undefined) {
-        jumpToPara(a.paraIndex);
-        return;
-      }
-      const el = scrollRef.current;
-      if (!el) return;
-      if (a.chapterIndex !== undefined) {
-        const mark = el.querySelector(`[data-ann-id="${a.id}"]`);
-        if (mark) {
-          mark.scrollIntoView({ block: 'center' });
-          return;
-        }
-        el.querySelector(`[data-chapter="${a.chapterIndex}"]`)?.scrollIntoView({ block: 'start' });
-        return;
-      }
-      if (a.page !== undefined) {
-        el.querySelector(`[data-pdf-page="${a.page}"]`)?.scrollIntoView({ block: 'start' });
-        return;
-      }
-      el.scrollTop = ratioToOffset(a.ratio, el.scrollHeight, el.clientHeight);
-    },
-    [jumpToPara],
-  );
-
   const removeAnnotation = useCallback(
     (id: string) => {
       void (async () => {
@@ -332,6 +401,47 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
       })();
     },
     [bookId, refreshAnnotations],
+  );
+
+  const jumpToAnnotation = useCallback(
+    (a: Annotation) => {
+      setDrawer(null);
+      const el = scrollRef.current;
+      if (a.paraIndex !== undefined) {
+        // TXT：定位到段落所在章节
+        let ch = 0;
+        const ranges = txtRangesRef.current;
+        for (let i = 0; i < ranges.length; i++) {
+          const [s, e] = ranges[i];
+          if (a.paraIndex >= s && a.paraIndex < e) {
+            ch = i;
+            break;
+          }
+        }
+        if (ch === chapterIndexRef.current) {
+          el?.querySelector(`[data-para="${a.paraIndex}"]`)?.scrollIntoView({ block: 'start' });
+        } else {
+          anchorRef.current = { paraIndex: a.paraIndex };
+          setChapterIndex(ch);
+        }
+        return;
+      }
+      if (a.chapterIndex !== undefined) {
+        if (a.chapterIndex === chapterIndexRef.current) {
+          el?.querySelector(`[data-ann-id="${a.id}"]`)?.scrollIntoView({ block: 'center' });
+        } else {
+          anchorRef.current = { annId: a.id };
+          setChapterIndex(a.chapterIndex);
+        }
+        return;
+      }
+      if (a.page !== undefined) {
+        el?.querySelector(`[data-pdf-page="${a.page}"]`)?.scrollIntoView({ block: 'start' });
+        return;
+      }
+      el?.scrollTo({ top: ratioToOffset(a.ratio, el.scrollHeight, el.clientHeight) });
+    },
+    [],
   );
 
   /* ---------- 字号调整保持相对位置 ---------- */
@@ -373,13 +483,34 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
   const onNumPages = useCallback((n: number) => setNumPages(n), []);
   const onPdfError = useCallback(() => onBackRef.current(), []);
 
+  /* ---------- 目录 ---------- */
+
+  const tocEntries = useMemo<TocEntry[]>(() => {
+    if (payload?.kind === 'txt') {
+      const list = txtChapters.length
+        ? txtChapters
+        : [{ title: '正文', offset: 0 }];
+      return list.map((c, i) => ({
+        label: c.title,
+        jump: () => goChapter(i, 'top'),
+      }));
+    }
+    if (payload?.kind === 'epub') {
+      return payload.book.toc.map((t) => ({
+        label: t.label,
+        jump: () => goChapter(Math.min(t.chapterIndex, chapterCount - 1), 'top'),
+      }));
+    }
+    return [];
+  }, [payload, txtChapters, chapterCount, goChapter]);
+
   /* ---------- 渲染 ---------- */
 
   if (!meta || !payload) {
     return <div className="reader-loading">加载中…</div>;
   }
 
-  const isPdf = payload.kind === 'pdf';
+  const isPdfView = payload.kind === 'pdf';
 
   return (
     <div className="reader">
@@ -390,9 +521,7 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
         <div className="reader-title" title={meta.title}>
           {meta.title}
         </div>
-        <span className="reader-pageinfo">
-          {pageInfo.page} / {pageInfo.pages} 页
-        </span>
+        <span className="reader-pageinfo">{pageLabel}</span>
       </header>
 
       <div className="reader-scroll" ref={scrollRef} onScroll={handleScroll}>
@@ -409,61 +538,85 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
             />
           </div>
         ) : payload.kind === 'epub' ? (
-          <TextReader
-            kind="epub"
-            paras={[]}
-            epub={payload.book}
-            annotations={annotations}
-            fontSize={fontSize}
-            onAddAnnotation={addAnnotation}
-            getRatio={() => ratioRef.current}
-            onMarkActivate={() => setDrawer('annotations')}
-            scrollToken={scrollToken}
-          />
+          <>
+            {chapterIndex > 0 && (
+              <div className="chapter-nav chapter-nav-top">
+                <button onClick={() => goChapter(chapterIndex - 1, 'prev')}>
+                  上一章
+                </button>
+              </div>
+            )}
+            <TextReader
+              kind="epub"
+              paras={[]}
+              paraStart={0}
+              chapterIndex={chapterIndex}
+              epub={payload.book}
+              annotations={chapterAnnotations}
+              fontSize={fontSize}
+              onAddAnnotation={addAnnotation}
+              getRatio={() => ratioRef.current}
+              onMarkActivate={() => setDrawer('annotations')}
+              scrollToken={scrollToken}
+            />
+            <div className="chapter-nav">
+              {chapterIndex > 0 && (
+                <button onClick={() => goChapter(chapterIndex - 1, 'prev')}>
+                  上一章
+                </button>
+              )}
+              {chapterIndex < chapterCount - 1 ? (
+                <button
+                  className="chapter-nav-next"
+                  onClick={() => goChapter(chapterIndex + 1, 'top')}
+                >
+                  下一章
+                </button>
+              ) : (
+                <span className="chapter-end">全书完</span>
+              )}
+            </div>
+          </>
         ) : (
-          <TextReader
-            kind="txt"
-            paras={txtParas}
-            epub={null}
-            annotations={annotations}
-            fontSize={fontSize}
-            onAddAnnotation={addAnnotation}
-            getRatio={() => ratioRef.current}
-            onMarkActivate={() => setDrawer('annotations')}
-            scrollToken={scrollToken}
-          />
+          <>
+            <TextReader
+              kind="txt"
+              paras={txtChapter?.paras ?? []}
+              paraStart={txtChapter?.paraStart ?? 0}
+              chapterIndex={chapterIndex}
+              chapterTitle={txtChapter?.title}
+              epub={null}
+              annotations={chapterAnnotations}
+              fontSize={fontSize}
+              onAddAnnotation={addAnnotation}
+              getRatio={() => ratioRef.current}
+              onMarkActivate={() => setDrawer('annotations')}
+              scrollToken={scrollToken}
+            />
+            <div className="chapter-nav">
+              {chapterIndex > 0 && (
+                <button onClick={() => goChapter(chapterIndex - 1, 'prev')}>
+                  上一章
+                </button>
+              )}
+              {chapterIndex < chapterCount - 1 ? (
+                <button
+                  className="chapter-nav-next"
+                  onClick={() => goChapter(chapterIndex + 1, 'top')}
+                >
+                  下一章
+                </button>
+              ) : (
+                <span className="chapter-end">全书完</span>
+              )}
+            </div>
+          </>
         )}
       </div>
 
-      <button
-        className="reader-nav reader-nav-prev"
-        title="上一页"
-        onClick={() => turnPage(-1)}
-      >
-        ‹
-      </button>
-      <button
-        className="reader-nav reader-nav-next"
-        title="下一页"
-        onClick={() => turnPage(1)}
-      >
-        ›
-      </button>
-
-      <button
-        className="zone zone-left"
-        title="上一页"
-        onClick={() => turnPage(-1)}
-      />
-      <button
-        className="zone zone-right"
-        title="下一页"
-        onClick={() => turnPage(1)}
-      />
-
       {/* 右侧悬浮工具栏（参考微信读书阅读页） */}
       <div className="reader-rail">
-        {!isPdf && (
+        {!isPdfView && (
           <button
             className="rail-btn"
             title="目录"
@@ -479,7 +632,7 @@ export default function Reader({ bookId, onBack }: ReaderProps) {
         >
           ✎
         </button>
-        {!isPdf && (
+        {!isPdfView && (
           <>
             <button
               className="rail-btn rail-btn-lg"
