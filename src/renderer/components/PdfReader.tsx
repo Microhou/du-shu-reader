@@ -9,7 +9,7 @@ import type {
 } from '../../shared/types.ts';
 import { findAncestorWithAttr } from '../annotations.ts';
 import { pdfjs } from '../pdf.ts';
-import { bubblePosition, SelBubble } from './SelBubble.tsx';
+import SelBubble, { bubblePosition } from './SelBubble.tsx';
 
 interface PdfReaderProps {
   /** 必须是拷贝：pdf.js 会把缓冲转移给 worker 导致原缓冲分离 */

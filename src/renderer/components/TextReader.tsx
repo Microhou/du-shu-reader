@@ -19,7 +19,7 @@ import {
   getTextOffset,
 } from '../annotations.ts';
 import { prepareChapterHtml } from '../sanitize.ts';
-import { bubblePosition, SelBubble } from './SelBubble.tsx';
+import SelBubble, { bubblePosition } from './SelBubble.tsx';
 
 interface TextReaderProps {
   kind: 'txt' | 'epub';
