@@ -1,0 +1,269 @@
+/* 读书阅读器 · 明亮纸张主题 */
+
+:root {
+  --paper: #f6f1e7;
+  --paper-raised: #fbf8f0;
+  --paper-dark: #ede5d3;
+  --ink: #33291f;
+  --ink-soft: #7a6a55;
+  --accent: #9a6b2f;
+  --line: #e3d9c6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Georgia, 'Times New Roman', 'STZhongsong', 'KaiTi', 'SimSun',
+    serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- 书架 ---------- */
+
+.shelf {
+  max-width: 860px;
+  margin: 0 auto;
+  min-height: 100%;
+  padding: 48px 24px 64px;
+}
+
+.shelf.dragging {
+  outline: 3px dashed var(--accent);
+  outline-offset: -12px;
+  border-radius: 12px;
+  background: rgba(154, 107, 47, 0.04);
+}
+
+.shelf-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.shelf-header h1 {
+  margin: 0;
+  font-size: 30px;
+  letter-spacing: 0.18em;
+}
+
+.btn {
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 6px;
+  padding: 9px 20px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+
+.btn:hover {
+  opacity: 0.85;
+}
+
+.shelf-status {
+  margin: 16px 0 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.shelf-empty {
+  margin-top: 40px;
+  padding: 90px 24px;
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  text-align: center;
+  color: var(--ink-soft);
+  line-height: 2;
+}
+
+.shelf-list {
+  list-style: none;
+  margin: 36px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.book-card {
+  position: relative;
+  padding: 18px 16px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-raised);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.book-card:hover {
+  box-shadow: 0 4px 14px rgba(60, 45, 20, 0.12);
+  transform: translateY(-1px);
+}
+
+.book-title {
+  font-size: 17px;
+  margin-bottom: 12px;
+  padding-right: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.book-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.book-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.book-card:hover .book-delete {
+  opacity: 1;
+}
+
+.book-delete:hover {
+  background: var(--paper-dark);
+  color: var(--ink);
+}
+
+/* ---------- 阅读器 ---------- */
+
+.reader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader-toolbar {
+  flex: none;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  z-index: 10;
+}
+
+.reader-title {
+  flex: 1;
+  text-align: center;
+  font-size: 15px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-pageinfo {
+  min-width: 96px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.reader-fontsize {
+  min-width: 24px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.reader-tool {
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.reader-tool:hover {
+  background: var(--paper-dark);
+}
+
+.reader-loading {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-soft);
+}
+
+.reader-scroll {
+  flex: 1;
+  overflow-y: auto;
+  /* 页码已由工具栏展示，隐藏滚动条换取沉浸感 */
+  scrollbar-width: none;
+}
+
+.reader-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.reader-content {
+  max-width: 660px;
+  margin: 0 auto;
+  padding: 40px 28px 140px;
+  line-height: 2;
+}
+
+.reader-content p {
+  margin: 0 0 12px;
+  text-indent: 2em;
+  overflow-wrap: break-word;
+}
+
+/* 点击翻页区域：叠在正文之上、工具栏之下 */
+.zone {
+  position: absolute;
+  top: 52px;
+  bottom: 0;
+  width: 33%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.zone-left {
+  left: 0;
+}
+
+.zone-right {
+  right: 0;
+}
