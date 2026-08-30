@@ -6,6 +6,6 @@
   "description": "读书阅读器 — 本地 TXT 电子书阅读器 MVP",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test tests/"
+    "test": "node --test"
   }
 }
