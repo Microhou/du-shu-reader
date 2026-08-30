@@ -43,7 +43,9 @@ export default function Bookshelf({
     setStatus('处理中…');
     void op()
       .then(setStatus)
-      .catch(() => setStatus('操作失败，请重试'));
+      .catch((e: unknown) =>
+        setStatus(e instanceof Error ? `操作失败：${e.message}` : '操作失败，请重试'),
+      );
   }, []);
 
   const importFromDialog = useCallback(async () => {

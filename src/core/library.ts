@@ -79,7 +79,10 @@ export function createLibrary(storage: KeyValueStore): Library {
     },
 
     async getBookContent(id) {
-      return (await storage.get<BookPayload>(`book:${id}`)) ?? null;
+      const raw = await storage.get<BookPayload | string>(`book:${id}`);
+      if (raw == null) return null;
+      // v0.1 兼容：旧版正文是裸字符串，归一化为判别联合
+      return typeof raw === 'string' ? { kind: 'txt', text: raw } : raw;
     },
 
     async saveProgress(id, ratio) {

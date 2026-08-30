@@ -132,6 +132,25 @@ test('兼容 v0.1 旧元数据（缺 format / readSeconds）', async () => {
   assert.equal(list[0].readSeconds, 0);
 });
 
+test('兼容 v0.1 旧正文（裸字符串 → txt payload）', async () => {
+  const store = memStore();
+  await store.set('library', [
+    { id: 'old1', title: '旧书', addedAt: 1, lastReadAt: 2, progress: 0.4 },
+  ]);
+  await store.set('book:old1', '旧版纯文本正文');
+  const lib = createLibrary(store);
+  assert.deepEqual(await lib.getBookContent('old1'), {
+    kind: 'txt',
+    text: '旧版纯文本正文',
+  });
+  // 新格式不受影响
+  await lib.addBook('新书', 'txt', { kind: 'txt', text: '新正文' });
+  assert.deepEqual(await lib.getBookContent((await lib.listBooks())[0].id), {
+    kind: 'txt',
+    text: '新正文',
+  });
+});
+
 test('removeBook 删除元数据与正文', async () => {
   const lib = createLibrary(memStore());
   const book = await lib.addBook('A', 'txt', { kind: 'txt', text: 'a' });
