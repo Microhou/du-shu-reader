@@ -7,6 +7,7 @@ export interface MarkAnchor {
   start: number;
   end: number;
   note?: string;
+  style?: 'mark' | 'wavy' | 'underline';
 }
 
 /** 节点在 root 纯文本中的字符偏移；找不到时返回 null */
@@ -83,7 +84,13 @@ export function applyMarks(
       }
       const markEl = document.createElement('mark');
       markEl.setAttribute('data-ann-id', mark.id);
-      markEl.className = mark.note ? 'mark mark-note' : 'mark mark-hl';
+      markEl.className = mark.note
+        ? 'mark mark-note'
+        : mark.style === 'wavy'
+          ? 'mark mark-wavy'
+          : mark.style === 'underline'
+            ? 'mark mark-line'
+            : 'mark mark-hl';
       if (mark.note) markEl.title = mark.note;
       target.parentNode?.insertBefore(markEl, target);
       markEl.appendChild(target);

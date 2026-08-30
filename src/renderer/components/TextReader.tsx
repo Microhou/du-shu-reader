@@ -11,6 +11,7 @@ import type {
   Annotation,
   AnnotationInput,
   EpubBook,
+  HighlightStyle,
 } from '../../shared/types.ts';
 import {
   applyMarks,
@@ -63,6 +64,14 @@ function findParaElement(node: Node | null, root: HTMLElement | null): HTMLEleme
     cur = cur.parentNode;
   }
   return null;
+}
+
+function styleClass(style?: HighlightStyle): string {
+  return style === 'wavy'
+    ? 'mark mark-wavy'
+    : style === 'underline'
+      ? 'mark mark-line'
+      : 'mark mark-hl';
 }
 
 export default function TextReader({
@@ -133,10 +142,11 @@ export default function TextReader({
       const e = Math.min(text.length, m.end!);
       if (s >= e) continue;
       if (s > pos) nodes.push(<span key={key++}>{text.slice(pos, s)}</span>);
+      const style = m.type === 'note' ? 'mark mark-note' : styleClass(m.style);
       nodes.push(
         <mark
           key={key++}
-          className={m.type === 'note' ? 'mark mark-note' : 'mark mark-hl'}
+          className={style}
           title={m.note ?? undefined}
           onClick={onMarkActivate}
         >
@@ -184,7 +194,13 @@ export default function TextReader({
       root,
       annotations
         .filter((a) => a.start != null && a.end != null)
-        .map((a) => ({ id: a.id, start: a.start!, end: a.end!, note: a.note })),
+        .map((a) => ({
+          id: a.id,
+          start: a.start!,
+          end: a.end!,
+          note: a.note,
+          style: a.style,
+        })),
     );
   }, [isEpub, annotations, chapterHtml]);
 
@@ -235,7 +251,7 @@ export default function TextReader({
           return;
         }
         setSel({
-          x: Math.min(window.innerWidth - 220, Math.max(24, rect.left + rect.width / 2 - 70)),
+          x: Math.min(window.innerWidth - 270, Math.max(24, rect.left + rect.width / 2 - 125)),
           y: Math.max(72, rect.top - 14),
           text,
           noteMode: false,
@@ -273,7 +289,7 @@ export default function TextReader({
         return;
       }
       setSel({
-        x: Math.min(window.innerWidth - 220, Math.max(24, rect.left + rect.width / 2 - 70)),
+        x: Math.min(window.innerWidth - 270, Math.max(24, rect.left + rect.width / 2 - 125)),
         y: Math.max(72, rect.top - 14),
         text,
         noteMode: false,
@@ -284,10 +300,15 @@ export default function TextReader({
     }, 0);
   }, [kind]);
 
-  const saveSelection = (type: 'highlight' | 'note', note?: string) => {
+  const saveSelection = (
+    type: 'highlight' | 'note',
+    style?: HighlightStyle,
+    note?: string,
+  ) => {
     if (!sel) return;
     onAddAnnotation({
       type,
+      style: type === 'highlight' ? (style ?? 'mark') : undefined,
       ratio: getRatio(),
       paraIndex: sel.paraIndex,
       chapterIndex: sel.chapterIndex,
@@ -300,6 +321,31 @@ export default function TextReader({
     setSel(null);
     setNoteDraft('');
   };
+
+  const copySelection = useCallback(() => {
+    if (!sel) return;
+    void (async () => {
+      try {
+        await navigator.clipboard.writeText(sel.text);
+      } catch {
+        // 无剪贴板权限时的兜底
+        const ta = document.createElement('textarea');
+        ta.value = sel.text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+        } catch {
+          // 都失败时静默关闭
+        }
+        ta.remove();
+      }
+      document.getSelection()?.removeAllRanges();
+      setSel(null);
+    })();
+  }, [sel]);
 
   return (
     <>
@@ -346,12 +392,13 @@ export default function TextReader({
           noteMode={sel.noteMode}
           noteDraft={noteDraft}
           onNoteDraftChange={setNoteDraft}
-          onHighlight={() => saveSelection('highlight')}
+          onCopy={copySelection}
+          onHighlight={(style) => saveSelection('highlight', style)}
           onStartNote={() => {
             setNoteDraft('');
             setSel({ ...sel, noteMode: true });
           }}
-          onSaveNote={() => saveSelection('note', noteDraft.trim() || undefined)}
+          onSaveNote={() => saveSelection('note', undefined, noteDraft.trim() || undefined)}
           onCancel={() => setSel(null)}
         />
       )}

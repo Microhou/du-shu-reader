@@ -71,6 +71,9 @@ export type BookPayload =
 
 export type AnnotationType = 'bookmark' | 'highlight' | 'note';
 
+/** 划线视觉样式 */
+export type HighlightStyle = 'mark' | 'wavy' | 'underline';
+
 /** PDF 高亮的矩形（页面宽高的百分比 0-1） */
 export interface MarkRect {
   x: number;
@@ -82,6 +85,8 @@ export interface MarkRect {
 export interface Annotation {
   id: string;
   type: AnnotationType;
+  /** 划线/笔记的视觉样式（默认 mark 马克笔高亮） */
+  style?: HighlightStyle;
   /** 创建时的整书滚动比例（0-1），兜底跳转用 */
   ratio: number;
   createdAt: number;
@@ -102,6 +107,7 @@ export interface Annotation {
 
 export interface AnnotationInput {
   type: AnnotationType;
+  style?: HighlightStyle;
   ratio: number;
   paraIndex?: number;
   start?: number;

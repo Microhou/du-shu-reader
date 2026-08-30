@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
-import type { Annotation, AnnotationInput, MarkRect } from '../../shared/types.ts';
+import type {
+  Annotation,
+  AnnotationInput,
+  HighlightStyle,
+  MarkRect,
+} from '../../shared/types.ts';
 import { findAncestorWithAttr } from '../annotations.ts';
 import { pdfjs } from '../pdf.ts';
 import SelBubble from './SelBubble.tsx';
@@ -132,7 +137,7 @@ export default function PdfReader({
       }
       const first = range.getBoundingClientRect();
       setSel({
-        x: Math.min(window.innerWidth - 220, Math.max(24, first.left + first.width / 2 - 70)),
+        x: Math.min(window.innerWidth - 270, Math.max(24, first.left + first.width / 2 - 125)),
         y: Math.max(72, first.top - 14),
         text,
         noteMode: false,
@@ -142,10 +147,11 @@ export default function PdfReader({
     }, 0);
   }, []);
 
-  const saveSelection = (type: 'highlight' | 'note', note?: string) => {
+  const saveSelection = (type: 'highlight' | 'note', style?: HighlightStyle, note?: string) => {
     if (!sel) return;
     onAddAnnotation({
       type,
+      style: type === 'highlight' ? (style ?? 'mark') : undefined,
       ratio: getRatio(),
       page: sel.page,
       rects: sel.rects,
@@ -185,12 +191,17 @@ export default function PdfReader({
           noteMode={sel.noteMode}
           noteDraft={noteDraft}
           onNoteDraftChange={setNoteDraft}
-          onHighlight={() => saveSelection('highlight')}
+          onCopy={() => {
+            void navigator.clipboard.writeText(sel.text).catch(() => {});
+            document.getSelection()?.removeAllRanges();
+            setSel(null);
+          }}
+          onHighlight={(style) => saveSelection('highlight', style)}
           onStartNote={() => {
             setNoteDraft('');
             setSel({ ...sel, noteMode: true });
           }}
-          onSaveNote={() => saveSelection('note', noteDraft.trim() || undefined)}
+          onSaveNote={() => saveSelection('note', undefined, noteDraft.trim() || undefined)}
           onCancel={() => setSel(null)}
         />
       )}
@@ -278,7 +289,15 @@ function PdfPage({
           (m.rects ?? []).map((r, i) => (
             <div
               key={`${m.id}-${i}`}
-              className="pdf-mark"
+              className={`pdf-mark ${
+                m.type === 'note'
+                  ? 'pdf-mark-note'
+                  : m.style === 'wavy'
+                    ? 'pdf-mark-wavy'
+                    : m.style === 'underline'
+                      ? 'pdf-mark-underline'
+                      : 'pdf-mark-hl'
+              }`}
               title={m.note ?? undefined}
               style={{
                 left: `${r.x * 100}%`,
