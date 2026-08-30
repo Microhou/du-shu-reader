@@ -4,6 +4,8 @@ import type { HighlightStyle } from '../../shared/types.ts';
 interface SelBubbleProps {
   x: number;
   y: number;
+  /** above = 气泡在选区上方（箭头朝下）；below = 气泡在选区下方（箭头朝上） */
+  placement: 'above' | 'below';
   noteMode: boolean;
   noteDraft: string;
   onNoteDraftChange: (value: string) => void;
@@ -12,6 +14,25 @@ interface SelBubbleProps {
   onStartNote: () => void;
   onSaveNote: () => void;
   onCancel: () => void;
+}
+
+export const SEL_BUBBLE_HEIGHT = 64;
+export const SEL_BUBBLE_GAP = 10;
+
+/**
+ * 气泡定位：默认在选区上方（底边距选区 10px，箭头朝下）；
+ * 上方空间不足（会压到顶栏）时放到选区下方（箭头朝上）。
+ */
+export function bubblePosition(
+  anchor: DOMRect,
+): { x: number; y: number; placement: 'above' | 'below' } {
+  const x = Math.min(
+    window.innerWidth - 270,
+    Math.max(24, anchor.left + anchor.width / 2 - 125),
+  );
+  const yAbove = anchor.top - SEL_BUBBLE_HEIGHT - SEL_BUBBLE_GAP;
+  if (yAbove >= 60) return { x, y: yAbove, placement: 'above' };
+  return { x, y: anchor.bottom + SEL_BUBBLE_GAP, placement: 'below' };
 }
 
 const ICON_PROPS = {
@@ -61,6 +82,7 @@ const NoteIcon = (
 export default function SelBubble({
   x,
   y,
+  placement,
   noteMode,
   noteDraft,
   onNoteDraftChange,
@@ -94,7 +116,10 @@ export default function SelBubble({
     );
   }
   return (
-    <div className="sel-pop" style={{ left: x, top: y }}>
+    <div
+      className={placement === 'below' ? 'sel-pop below' : 'sel-pop'}
+      style={{ left: x, top: y }}
+    >
       <button className="sel-item" onClick={onCopy}>
         {CopyIcon}
         <span>复制</span>

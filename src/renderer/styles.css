@@ -550,6 +550,15 @@ button {
   border-bottom: none;
 }
 
+/* 气泡在选区下方时：箭头翻到顶部朝上 */
+.sel-pop.below::after {
+  bottom: auto;
+  top: -6px;
+  border: 6px solid transparent;
+  border-top: none;
+  border-bottom-color: #2e2e33;
+}
+
 .sel-item {
   display: flex;
   flex-direction: column;

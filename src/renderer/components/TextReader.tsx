@@ -19,7 +19,7 @@ import {
   getTextOffset,
 } from '../annotations.ts';
 import { prepareChapterHtml } from '../sanitize.ts';
-import SelBubble from './SelBubble.tsx';
+import { bubblePosition, SelBubble } from './SelBubble.tsx';
 
 interface TextReaderProps {
   kind: 'txt' | 'epub';
@@ -43,6 +43,7 @@ interface TextReaderProps {
 interface SelectionState {
   x: number;
   y: number;
+  placement: 'above' | 'below';
   text: string;
   noteMode: boolean;
   /** TXT 锚点 */
@@ -251,8 +252,7 @@ export default function TextReader({
           return;
         }
         setSel({
-          x: Math.min(window.innerWidth - 270, Math.max(24, rect.left + rect.width / 2 - 125)),
-          y: Math.max(72, rect.top - 14),
+          ...bubblePosition(rect),
           text,
           noteMode: false,
           paraIndex,
@@ -289,8 +289,7 @@ export default function TextReader({
         return;
       }
       setSel({
-        x: Math.min(window.innerWidth - 270, Math.max(24, rect.left + rect.width / 2 - 125)),
-        y: Math.max(72, rect.top - 14),
+        ...bubblePosition(rect),
         text,
         noteMode: false,
         chapterIndex: chapterIdx,
@@ -389,6 +388,7 @@ export default function TextReader({
         <SelBubble
           x={sel.x}
           y={sel.y}
+          placement={sel.placement}
           noteMode={sel.noteMode}
           noteDraft={noteDraft}
           onNoteDraftChange={setNoteDraft}

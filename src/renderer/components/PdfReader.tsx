@@ -9,7 +9,7 @@ import type {
 } from '../../shared/types.ts';
 import { findAncestorWithAttr } from '../annotations.ts';
 import { pdfjs } from '../pdf.ts';
-import SelBubble from './SelBubble.tsx';
+import { bubblePosition, SelBubble } from './SelBubble.tsx';
 
 interface PdfReaderProps {
   /** 必须是拷贝：pdf.js 会把缓冲转移给 worker 导致原缓冲分离 */
@@ -26,6 +26,7 @@ interface PdfReaderProps {
 interface SelectionState {
   x: number;
   y: number;
+  placement: 'above' | 'below';
   text: string;
   noteMode: boolean;
   page: number;
@@ -137,8 +138,7 @@ export default function PdfReader({
       }
       const first = range.getBoundingClientRect();
       setSel({
-        x: Math.min(window.innerWidth - 270, Math.max(24, first.left + first.width / 2 - 125)),
-        y: Math.max(72, first.top - 14),
+        ...bubblePosition(first),
         text,
         noteMode: false,
         page: pageNum,
@@ -188,6 +188,7 @@ export default function PdfReader({
         <SelBubble
           x={sel.x}
           y={sel.y}
+          placement={sel.placement}
           noteMode={sel.noteMode}
           noteDraft={noteDraft}
           onNoteDraftChange={setNoteDraft}
