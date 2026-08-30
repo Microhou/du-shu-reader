@@ -1,20 +1,49 @@
-// 书库逻辑：存储介质可注入，便于单元测试
-import type { BookMeta } from '../shared/types.ts';
+// 书库逻辑：存储介质可注入，便于单元测试。
+// 数据形态：元数据列表（library）+ 每本书内容（book:{id}）+ 标注列表（ann:{id}）
+import type {
+  Annotation,
+  AnnotationInput,
+  BookFormat,
+  BookMeta,
+  BookPayload,
+} from '../shared/types.ts';
 import type { KeyValueStore } from './storage.ts';
 
 export interface Library {
   listBooks(): Promise<BookMeta[]>;
-  addBook(title: string, content: string): Promise<BookMeta>;
-  getBookContent(id: string): Promise<string | null>;
+  addBook(title: string, format: BookFormat, payload: BookPayload): Promise<BookMeta>;
+  getBookContent(id: string): Promise<BookPayload | null>;
   saveProgress(id: string, ratio: number): Promise<BookMeta | null>;
+  /** 累计阅读秒数（同时刷新 lastReadAt） */
+  addReadSeconds(id: string, seconds: number): Promise<BookMeta | null>;
   removeBook(id: string): Promise<boolean>;
+  listAnnotations(bookId: string): Promise<Annotation[]>;
+  addAnnotation(bookId: string, input: AnnotationInput): Promise<Annotation>;
+  removeAnnotation(bookId: string, annotationId: string): Promise<boolean>;
+}
+
+/** 兼容 v0.1 的旧元数据（缺 format / readSeconds 字段） */
+type StoredMeta = Omit<BookMeta, 'format' | 'readSeconds'> &
+  Partial<Pick<BookMeta, 'format' | 'readSeconds'>>;
+
+function normalizeMeta(raw: StoredMeta): BookMeta {
+  return {
+    ...raw,
+    format: raw.format ?? 'txt',
+    readSeconds: raw.readSeconds ?? 0,
+  };
+}
+
+function newId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function createLibrary(storage: KeyValueStore): Library {
   const LIST_KEY = 'library';
 
   async function loadList(): Promise<BookMeta[]> {
-    return (await storage.get<BookMeta[]>(LIST_KEY)) ?? [];
+    const raw = (await storage.get<StoredMeta[]>(LIST_KEY)) ?? [];
+    return raw.map(normalizeMeta);
   }
 
   async function saveList(list: BookMeta[]): Promise<void> {
@@ -26,23 +55,25 @@ export function createLibrary(storage: KeyValueStore): Library {
       return loadList();
     },
 
-    async addBook(title, content) {
+    async addBook(title, format, payload) {
       const list = await loadList();
       const book: BookMeta = {
-        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        id: newId(),
         title,
         addedAt: Date.now(),
         lastReadAt: 0,
         progress: 0,
+        format,
+        readSeconds: 0,
       };
       list.unshift(book);
-      await storage.set(`book:${book.id}`, content);
+      await storage.set(`book:${book.id}`, payload);
       await saveList(list);
       return book;
     },
 
     async getBookContent(id) {
-      return (await storage.get<string>(`book:${id}`)) ?? null;
+      return (await storage.get<BookPayload>(`book:${id}`)) ?? null;
     },
 
     async saveProgress(id, ratio) {
@@ -55,12 +86,48 @@ export function createLibrary(storage: KeyValueStore): Library {
       return book;
     },
 
+    async addReadSeconds(id, seconds) {
+      if (!(seconds > 0)) return null;
+      const list = await loadList();
+      const book = list.find((b) => b.id === id);
+      if (!book) return null;
+      book.readSeconds += Math.floor(seconds);
+      book.lastReadAt = Date.now();
+      await saveList(list);
+      return book;
+    },
+
     async removeBook(id) {
       const list = await loadList();
       const next = list.filter((b) => b.id !== id);
       await storage.del(`book:${id}`);
+      await storage.del(`ann:${id}`);
       await saveList(next);
       return next.length !== list.length;
+    },
+
+    async listAnnotations(bookId) {
+      return (await storage.get<Annotation[]>(`ann:${bookId}`)) ?? [];
+    },
+
+    async addAnnotation(bookId, input) {
+      const list = await storage.get<Annotation[]>(`ann:${bookId}`) ?? [];
+      const annotation: Annotation = {
+        ...input,
+        id: newId(),
+        createdAt: Date.now(),
+      };
+      list.push(annotation);
+      await storage.set(`ann:${bookId}`, list);
+      return annotation;
+    },
+
+    async removeAnnotation(bookId, annotationId) {
+      const list = (await storage.get<Annotation[]>(`ann:${bookId}`)) ?? [];
+      const next = list.filter((a) => a.id !== annotationId);
+      if (next.length === list.length) return false;
+      await storage.set(`ann:${bookId}`, next);
+      return true;
     },
   };
 }

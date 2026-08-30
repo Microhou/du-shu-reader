@@ -43,9 +43,9 @@ const createWindow = () => {
 app.whenReady().then(() => {
   ipcMain.handle('open-text-files', async () => {
     const result = await dialog.showOpenDialog({
-      title: '导入 TXT 文件',
+      title: '导入电子书',
       buttonLabel: '导入',
-      filters: [{ name: '文本文档', extensions: ['txt'] }],
+      filters: [{ name: '电子书', extensions: ['txt', 'epub', 'pdf'] }],
       properties: ['openFile', 'multiSelections'],
     });
     if (result.canceled || result.filePaths.length === 0) return [];

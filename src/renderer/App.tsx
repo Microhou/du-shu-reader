@@ -1,17 +1,37 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { parseTxt } from '../core/txt-parser.ts';
-import type { BookMeta, OpenedTextFile } from '../shared/types.ts';
+import { parseTxt, titleFromFilename } from '../core/txt-parser.ts';
+import { parseEpub } from '../core/epub-parser.ts';
+import type {
+  BookFormat,
+  BookMeta,
+  OpenedTextFile,
+} from '../shared/types.ts';
 import Bookshelf from './components/Bookshelf.tsx';
 import Reader from './components/Reader.tsx';
 import { library } from './library.ts';
+import { useSettings } from './hooks/useSettings.ts';
 
 type View = { name: 'shelf' } | { name: 'reader'; bookId: string };
+
+export interface ImportResult {
+  added: number;
+  failed: number;
+}
+
+function detectFormat(name: string): BookFormat | null {
+  if (/\.txt$/i.test(name)) return 'txt';
+  if (/\.epub$/i.test(name)) return 'epub';
+  if (/\.pdf$/i.test(name)) return 'pdf';
+  return null;
+}
 
 export default function App() {
   const [view, setView] = useState<View>({ name: 'shelf' });
   const [books, setBooks] = useState<BookMeta[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // 主题在书架也要生效：挂载时把持久化主题写到根元素
+  useSettings();
 
   const refresh = useCallback(async () => {
     setBooks(await library.listBooks());
@@ -23,16 +43,42 @@ export default function App() {
   }, [refresh]);
 
   const importFiles = useCallback(
-    async (files: OpenedTextFile[]) => {
+    async (files: OpenedTextFile[]): Promise<ImportResult> => {
       let added = 0;
+      let failed = 0;
       for (const file of files) {
-        const { title, content } = parseTxt(file.data, file.name);
-        if (!content) continue;
-        await library.addBook(title, content);
-        added += 1;
+        try {
+          const format = detectFormat(file.name);
+          if (!format) {
+            failed += 1;
+            continue;
+          }
+          if (format === 'txt') {
+            const { title, content } = parseTxt(file.data, file.name);
+            if (!content) {
+              failed += 1;
+              continue;
+            }
+            await library.addBook(title, 'txt', { kind: 'txt', text: content });
+          } else if (format === 'epub') {
+            const book = await parseEpub(file.data);
+            await library.addBook(titleFromFilename(file.name), 'epub', {
+              kind: 'epub',
+              book,
+            });
+          } else {
+            await library.addBook(titleFromFilename(file.name), 'pdf', {
+              kind: 'pdf',
+              data: file.data,
+            });
+          }
+          added += 1;
+        } catch {
+          failed += 1;
+        }
       }
       if (added > 0) await refresh();
-      return added;
+      return { added, failed };
     },
     [refresh],
   );

@@ -1,13 +1,23 @@
 import { useCallback, useRef, useState } from 'react';
 
 import { formatProgress, formatTime } from '../../core/library.ts';
+import { formatDuration } from '../../core/stats.ts';
 import type { BookMeta, OpenedTextFile } from '../../shared/types.ts';
+import type { ImportResult } from '../App.tsx';
+
+const SUPPORTED = /\.(txt|epub|pdf)$/i;
+
+const FORMAT_LABEL: Record<BookMeta['format'], string> = {
+  txt: 'TXT',
+  epub: 'EPUB',
+  pdf: 'PDF',
+};
 
 interface Props {
   books: BookMeta[];
   loaded: boolean;
   onOpen: (id: string) => void;
-  onImport: (files: OpenedTextFile[]) => Promise<number>;
+  onImport: (files: OpenedTextFile[]) => Promise<ImportResult>;
   onRemove: (id: string) => void;
 }
 
@@ -32,8 +42,8 @@ export default function Bookshelf({
       return;
     }
     if (files.length === 0) return;
-    const added = await onImport(files);
-    setStatus(added > 0 ? `已导入 ${added} 本` : '没有可导入的内容');
+    const result = await onImport(files);
+    setStatus(describe(result));
   }, [onImport]);
 
   const importFromDrop = useCallback(
@@ -41,18 +51,18 @@ export default function Bookshelf({
       setStatus('');
       const files: OpenedTextFile[] = [];
       for (const file of Array.from(fileList)) {
-        if (!/\.txt$/i.test(file.name)) continue;
+        if (!SUPPORTED.test(file.name)) continue;
         files.push({
           name: file.name,
           data: new Uint8Array(await file.arrayBuffer()),
         });
       }
       if (files.length === 0) {
-        setStatus('仅支持 TXT 文件');
+        setStatus('仅支持 TXT / EPUB / PDF 文件');
         return;
       }
-      const added = await onImport(files);
-      setStatus(added > 0 ? `已导入 ${added} 本` : '文件内容为空');
+      const result = await onImport(files);
+      setStatus(describe(result));
     },
     [onImport],
   );
@@ -83,7 +93,7 @@ export default function Bookshelf({
       <header className="shelf-header">
         <h1>读书</h1>
         <button className="btn" onClick={() => void importFromDialog()}>
-          导入 TXT
+          导入
         </button>
       </header>
 
@@ -97,7 +107,7 @@ export default function Bookshelf({
         <div className="shelf-empty">
           书架还是空的。
           <br />
-          点击右上角「导入 TXT」，或把 TXT 文件拖到这里。
+          点击右上角「导入」，或把 TXT / EPUB / PDF 文件拖到这里。
         </div>
       ) : (
         <ul className="shelf-list">
@@ -111,9 +121,21 @@ export default function Bookshelf({
                 {book.title}
               </div>
               <div className="book-meta">
-                <span>{formatProgress(book.progress)}</span>
+                <span className="book-facts">
+                  <span
+                    className={`book-format book-format-${book.format}`}
+                  >
+                    {FORMAT_LABEL[book.format]}
+                  </span>
+                  <span>{formatProgress(book.progress)}</span>
+                </span>
                 <span>{formatTime(book.lastReadAt)}</span>
               </div>
+              {book.readSeconds > 0 && (
+                <div className="book-meta book-meta-sub">
+                  <span>读过 {formatDuration(book.readSeconds)}</span>
+                </div>
+              )}
               <button
                 className="book-delete"
                 title="删除"
@@ -134,4 +156,11 @@ export default function Bookshelf({
       )}
     </div>
   );
+}
+
+function describe(result: ImportResult): string {
+  const parts: string[] = [];
+  if (result.added > 0) parts.push(`已导入 ${result.added} 本`);
+  if (result.failed > 0) parts.push(`${result.failed} 本失败（文件损坏或格式不支持）`);
+  return parts.length > 0 ? parts.join('，') : '没有可导入的内容';
 }
