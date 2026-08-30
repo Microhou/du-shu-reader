@@ -1,6 +1,13 @@
-// 备份纯逻辑：构建/解析备份文档、结构化克隆还原、笔记 Markdown 导出。
+// 备份纯逻辑：构建/解析备份文档、base64 还原、笔记 Markdown 导出。
 // 与存储介质解耦（输入输出都是纯数据），可在 Node 单测。
-import type { Annotation, BookMeta, BookPayload } from '../shared/types.ts';
+// btoa/atob 在 Node 16+ 与浏览器均为全局，无需注入。
+import type {
+  Annotation,
+  BookMeta,
+  BookPayload,
+  EpubBook,
+} from '../shared/types.ts';
+import { formatTime } from './library.ts';
 
 export const BACKUP_FORMAT = 'dushu-backup';
 export const BACKUP_VERSION = 1;
@@ -20,12 +27,12 @@ export interface BackupBook {
 }
 
 /**
- * IndexedDB 里存的 payload 含 Uint8Array（PDF/EPUB 图片），直接 JSON.stringify 会丢成
- * `{}`；备份前转为 { __bytes: base64 }，恢复时 revive 回 Uint8Array。
+ * IndexedDB 里的 payload 含 Uint8Array（PDF 字节 / EPUB 图片），直接 JSON.stringify
+ * 会丢成 `{}`；备份前编码为 base64，恢复时还原。
  */
 export type BackupPayload =
   | { kind: 'txt'; text: string }
-  | { kind: 'epub'; book: { chapters: unknown; toc: unknown; images: Record<string, string> } }
+  | { kind: 'epub'; book: Omit<EpubBook, 'images'> & { images: Record<string, string> } }
   | { kind: 'pdf'; data: { __bytes: string } };
 
 export function bytesToBase64(bytes: Uint8Array): string {
@@ -44,6 +51,15 @@ export function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+export function buildBackupFile(books: BackupBook[]): BackupFile {
+  return {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    exportedAt: Date.now(),
+    books,
+  };
+}
+
 export function buildBackupBook(
   meta: BookMeta,
   payload: BookPayload,
@@ -57,47 +73,24 @@ export function buildBackupBook(
     for (const [path, bytes] of Object.entries(payload.book.images)) {
       images[path] = bytesToBase64(bytes);
     }
-    backupPayload = {
-      kind: 'epub',
-      book: { chapters: payload.book.chapters, toc: payload.book.toc, images },
-    };
+    backupPayload = { kind: 'epub', book: { ...payload.book, images } };
   } else {
     backupPayload = { kind: 'pdf', data: { __bytes: bytesToBase64(payload.data) } };
   }
   return { meta, payload: backupPayload, annotations };
 }
 
-/** btoa/atob 的 Node 兼容注入点（Node 18+ 已内置 global） */
-export interface BackupEnv {
-  btoa: (b: string) => string;
-  atob: (a: string) => string;
-}
-
-/** 把 BackupPayload 的 base64 字节还原为运行时 Uint8Array */
-export function revivePayload(payload: BackupPayload, env: BackupEnv): BookPayload {
+/** 备份 payload → 运行时 payload（还原二进制字段） */
+export function revivePayload(payload: BackupPayload): BookPayload {
   if (payload.kind === 'txt') return payload;
   if (payload.kind === 'pdf') {
-    return { kind: 'pdf', data: base64ToBytesWith(payload.data.__bytes, env) };
+    return { kind: 'pdf', data: base64ToBytes(payload.data.__bytes) };
   }
   const images: Record<string, Uint8Array> = {};
   for (const [path, b64] of Object.entries(payload.book.images)) {
-    images[path] = base64ToBytesWith(b64, env);
+    images[path] = base64ToBytes(b64);
   }
-  return {
-    kind: 'epub',
-    book: {
-      chapters: payload.book.chapters as BookPayload extends never ? never : import('../shared/types.ts').EpubBook['chapters'],
-      toc: payload.book.toc as import('../shared/types.ts').EpubBook['toc'],
-      images,
-    },
-  };
-}
-
-function base64ToBytesWith(b64: string, env: BackupEnv): Uint8Array {
-  const binary = env.atob(b64);
-  const out = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
-  return out;
+  return { kind: 'epub', book: { ...payload.book, images } };
 }
 
 export function parseBackup(raw: string): BackupFile {
@@ -117,8 +110,6 @@ export function parseBackup(raw: string): BackupFile {
 
 /* ---------- 笔记 Markdown 导出 ---------- */
 
-import { formatTime } from './library.ts';
-
 const TYPE_LABEL: Record<Annotation['type'], string> = {
   bookmark: '书签',
   highlight: '划线',
@@ -134,7 +125,8 @@ export function annotationsToMarkdown(
   const ordered = [...annotations].sort((a, b) => a.ratio - b.ratio);
   const lines: string[] = [`# 《${meta.title}》 标注导出`, ''];
   for (const a of ordered) {
-    const loc = a.page !== undefined ? `（第 ${a.page} 页）` : `（进度 ${Math.round(a.ratio * 100)}%）`;
+    const loc =
+      a.page !== undefined ? `（第 ${a.page} 页）` : `（进度 ${Math.round(a.ratio * 100)}%）`;
     lines.push(`## ${TYPE_LABEL[a.type]} ${loc}`);
     lines.push('');
     if (a.text) {

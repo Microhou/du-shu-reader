@@ -19,6 +19,9 @@ interface Props {
   onOpen: (id: string) => void;
   onImport: (files: OpenedTextFile[]) => Promise<ImportResult>;
   onRemove: (id: string) => void;
+  onBackup: () => Promise<string>;
+  onRestore: () => Promise<string>;
+  onExportNotes: () => Promise<string>;
 }
 
 export default function Bookshelf({
@@ -27,10 +30,21 @@ export default function Bookshelf({
   onOpen,
   onImport,
   onRemove,
+  onBackup,
+  onRestore,
+  onExportNotes,
 }: Props) {
   const [status, setStatus] = useState('');
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
+
+  /** 执行数据操作（备份/恢复/导出），统一展示结果消息 */
+  const runDataOp = useCallback((op: () => Promise<string>) => {
+    setStatus('处理中…');
+    void op()
+      .then(setStatus)
+      .catch(() => setStatus('操作失败，请重试'));
+  }, []);
 
   const importFromDialog = useCallback(async () => {
     setStatus('');
@@ -92,9 +106,32 @@ export default function Bookshelf({
     >
       <header className="shelf-header">
         <h1>读书</h1>
-        <button className="btn" onClick={() => void importFromDialog()}>
-          导入
-        </button>
+        <div className="shelf-actions">
+          <button
+            className="btn-ghost"
+            title="把全部书籍、进度与标注导出为 JSON 备份文件"
+            onClick={() => runDataOp(onBackup)}
+          >
+            备份
+          </button>
+          <button
+            className="btn-ghost"
+            title="从备份文件恢复书籍与标注"
+            onClick={() => runDataOp(onRestore)}
+          >
+            恢复
+          </button>
+          <button
+            className="btn-ghost"
+            title="把全部划线与笔记导出为 Markdown"
+            onClick={() => runDataOp(onExportNotes)}
+          >
+            笔记
+          </button>
+          <button className="btn" onClick={() => void importFromDialog()}>
+            导入
+          </button>
+        </div>
       </header>
 
       {status && (

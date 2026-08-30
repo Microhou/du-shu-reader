@@ -2,6 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { parseTxt, titleFromFilename } from '../core/txt-parser.ts';
 import { parseEpub } from '../core/epub-parser.ts';
+import {
+  annotationsToMarkdown,
+  buildBackupBook,
+  buildBackupFile,
+  parseBackup,
+  revivePayload,
+} from '../core/backup.ts';
+import { todayKey } from '../core/stats.ts';
 import type {
   BookFormat,
   BookMeta,
@@ -88,6 +96,74 @@ export default function App() {
     [refresh],
   );
 
+  /** 全量备份：书籍内容 + 进度 + 标注 → 用户选择的位置（JSON） */
+  const exportBackup = useCallback(async (): Promise<string> => {
+    const all = await library.listBooks();
+    if (all.length === 0) return '书架是空的，没有可备份的内容';
+    const entries = [];
+    for (const meta of all) {
+      const payload = await library.getBookContent(meta.id);
+      if (!payload) continue;
+      entries.push(
+        buildBackupBook(meta, payload, await library.listAnnotations(meta.id)),
+      );
+    }
+    const json = JSON.stringify(buildBackupFile(entries));
+    const savedPath = await window.api.saveFile({
+      title: '备份读书数据',
+      defaultName: `读书备份-${todayKey()}.json`,
+      content: json,
+      filterName: '读书备份',
+      extensions: ['json'],
+    });
+    return savedPath
+      ? `已备份 ${entries.length} 本 → ${savedPath}`
+      : '已取消备份';
+  }, []);
+
+  /** 从备份 JSON 恢复（按书去重，已存在则跳过） */
+  const importBackup = useCallback(async (): Promise<string> => {
+    const file = await window.api.openBackupFile();
+    if (!file) return '已取消恢复';
+    try {
+      const backup = parseBackup(file.content);
+      let restored = 0;
+      let skipped = 0;
+      for (const entry of backup.books) {
+        const result = await library.restoreBook(
+          entry.meta,
+          revivePayload(entry.payload),
+          entry.annotations,
+        );
+        if (result === 'restored') restored += 1;
+        else skipped += 1;
+      }
+      await refresh();
+      return `恢复完成：新增 ${restored} 本${skipped > 0 ? `，跳过已存在 ${skipped} 本` : ''}`;
+    } catch (e) {
+      return e instanceof Error ? `恢复失败：${e.message}` : '恢复失败：文件无法解析';
+    }
+  }, [refresh]);
+
+  /** 全部标注 → 单个 Markdown 文件 */
+  const exportNotes = useCallback(async (): Promise<string> => {
+    const all = await library.listBooks();
+    const parts: string[] = [];
+    for (const meta of all) {
+      const md = annotationsToMarkdown(meta, await library.listAnnotations(meta.id));
+      if (md) parts.push(md);
+    }
+    if (parts.length === 0) return '还没有任何标注可导出';
+    const savedPath = await window.api.saveFile({
+      title: '导出标注笔记',
+      defaultName: `读书笔记-${todayKey()}.md`,
+      content: parts.join('\n\n---\n\n'),
+      filterName: 'Markdown',
+      extensions: ['md'],
+    });
+    return savedPath ? `笔记已导出 → ${savedPath}` : '已取消导出';
+  }, []);
+
   if (view.name === 'reader') {
     return (
       <Reader
@@ -107,6 +183,9 @@ export default function App() {
       onOpen={(id) => setView({ name: 'reader', bookId: id })}
       onImport={importFiles}
       onRemove={(id) => void removeBook(id)}
+      onBackup={exportBackup}
+      onRestore={importBackup}
+      onExportNotes={exportNotes}
     />
   );
 }

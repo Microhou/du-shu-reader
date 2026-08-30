@@ -1,7 +1,7 @@
 // 主进程：窗口生命周期 + 文件对话框 + fs 读取
 // 安全基线：contextIsolation / sandbox 开启，Node 集成关闭，不加载远程内容
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import started from 'electron-squirrel-startup';
@@ -62,6 +62,52 @@ app.whenReady().then(() => {
       }
     }
     return files;
+  });
+
+  ipcMain.handle(
+    'save-file',
+    async (
+      _event,
+      opts: {
+        title?: string;
+        defaultName: string;
+        content: string;
+        filterName?: string;
+        extensions?: string[];
+      },
+    ): Promise<string | null> => {
+      const result = await dialog.showSaveDialog({
+        title: opts.title ?? '保存文件',
+        defaultPath: opts.defaultName,
+        filters: [
+          {
+            name: opts.filterName ?? '文件',
+            extensions: opts.extensions ?? ['txt'],
+          },
+        ],
+      });
+      if (result.canceled || !result.filePath) return null;
+      await writeFile(result.filePath, opts.content, 'utf8');
+      return result.filePath;
+    },
+  );
+
+  ipcMain.handle('open-backup-file', async (): Promise<{ name: string; content: string } | null> => {
+    const result = await dialog.showOpenDialog({
+      title: '导入备份',
+      buttonLabel: '导入',
+      filters: [{ name: '读书备份', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    try {
+      return {
+        name: path.basename(result.filePaths[0]),
+        content: await readFile(result.filePaths[0], 'utf8'),
+      };
+    } catch {
+      return null;
+    }
   });
 
   createWindow();

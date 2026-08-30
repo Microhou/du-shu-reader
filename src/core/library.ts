@@ -17,6 +17,12 @@ export interface Library {
   /** 累计阅读秒数（同时刷新 lastReadAt） */
   addReadSeconds(id: string, seconds: number): Promise<BookMeta | null>;
   removeBook(id: string): Promise<boolean>;
+  /** 从备份恢复一本书：按 id 幂等（已存在则跳过），保留进度与标注 */
+  restoreBook(
+    meta: BookMeta,
+    payload: BookPayload,
+    annotations: Annotation[],
+  ): Promise<'restored' | 'skipped'>;
   listAnnotations(bookId: string): Promise<Annotation[]>;
   addAnnotation(bookId: string, input: AnnotationInput): Promise<Annotation>;
   removeAnnotation(bookId: string, annotationId: string): Promise<boolean>;
@@ -104,6 +110,16 @@ export function createLibrary(storage: KeyValueStore): Library {
       await storage.del(`ann:${id}`);
       await saveList(next);
       return next.length !== list.length;
+    },
+
+    async restoreBook(meta, payload, annotations) {
+      const list = await loadList();
+      if (list.some((b) => b.id === meta.id)) return 'skipped';
+      list.unshift(meta);
+      await storage.set(`book:${meta.id}`, payload);
+      await storage.set(`ann:${meta.id}`, annotations);
+      await saveList(list);
+      return 'restored';
     },
 
     async listAnnotations(bookId) {

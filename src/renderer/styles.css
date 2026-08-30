@@ -84,6 +84,26 @@ button {
   justify-content: space-between;
 }
 
+.shelf-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+}
+
+.btn-ghost:hover {
+  background: var(--paper-dark);
+}
+
 .shelf-header h1 {
   margin: 0;
   font-size: 30px;
